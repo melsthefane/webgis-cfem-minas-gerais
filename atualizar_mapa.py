@@ -167,14 +167,14 @@ municipios = gpd.read_file(
 )
 
 
-# Garantir sistema de coordenadas WGS84
+# Garantir WGS84
 
 municipios = municipios.to_crs(
     epsg=4326
 )
 
 
-# Padronizar código IBGE municipal
+# Padronizar código IBGE
 
 municipios["CD_MUN"] = (
     municipios["CD_MUN"]
@@ -195,7 +195,7 @@ print(
 
 
 # ============================================================
-# 7. FUNÇÃO DE CORES DA CFEM
+# 7. FUNÇÃO DE CORES
 # ============================================================
 
 def cor_cfem(valor):
@@ -261,7 +261,7 @@ folium.TileLayer(
 ).add_to(mapa_cfem)
 
 
-# Esri World Topographic Map
+# Esri World Topo
 
 folium.TileLayer(
     tiles=(
@@ -285,33 +285,31 @@ folium.TileLayer(
 titulo_html = """
 <div style="
     position: fixed;
-    top: 20px;
-    left: 20px;
+    top: 10px;
+    left: 70px;
     z-index: 9999;
 
-    background-color:
-        rgba(255,255,255,0.95);
+    background-color: rgba(255,255,255,0.95);
 
     border: 2px solid #777;
     border-radius: 6px;
 
-    padding: 12px 18px;
+    padding: 10px 18px;
 
-    box-shadow:
-        0 1px 5px rgba(0,0,0,0.4);
+    box-shadow: 0 1px 5px rgba(0,0,0,0.4);
 
     text-align: left;
 
-    font-family:
-        Arial, sans-serif;
+    font-family: Arial, sans-serif;
 
-    max-width: 480px;
+    white-space: nowrap;
 ">
 
     <div style="
         font-size: 20px;
         font-weight: bold;
         line-height: 1.2;
+        white-space: nowrap;
     ">
         Mapa de Arrecadação da CFEM — Minas Gerais
     </div>
@@ -320,9 +318,9 @@ titulo_html = """
         font-size: 13px;
         margin-top: 5px;
         line-height: 1.3;
+        white-space: nowrap;
     ">
-        Compensação Financeira pela Exploração
-        de Recursos Minerais
+        Compensação Financeira pela Exploração de Recursos Minerais
     </div>
 
 </div>
@@ -347,18 +345,14 @@ for ano in anos:
     )
 
 
-    # --------------------------------------------------------
     # Dados do ano
-    # --------------------------------------------------------
 
     dados_ano = cfem_total[
         cfem_total["Ano"] == ano
     ].copy()
 
 
-    # --------------------------------------------------------
     # Juntar CFEM com municípios
-    # --------------------------------------------------------
 
     geo_ano = municipios.merge(
 
@@ -377,7 +371,7 @@ for ano in anos:
     )
 
 
-    # Municípios sem arrecadação recebem zero
+    # Municípios sem arrecadação = zero
 
     geo_ano["CFEM_Total"] = (
         geo_ano["CFEM_Total"]
@@ -392,7 +386,7 @@ for ano in anos:
 
 
     # --------------------------------------------------------
-    # Formatação monetária brasileira
+    # FORMATAÇÃO MONETÁRIA BRASILEIRA
     # --------------------------------------------------------
 
     geo_ano["CFEM_R$"] = (
@@ -408,7 +402,7 @@ for ano in anos:
 
 
     # --------------------------------------------------------
-    # Grupo da camada
+    # CAMADA DO ANO
     # --------------------------------------------------------
 
     camada = folium.FeatureGroup(
@@ -422,7 +416,7 @@ for ano in anos:
 
 
     # --------------------------------------------------------
-    # Estilo dos municípios
+    # ESTILO
     # --------------------------------------------------------
 
     def estilo(feature):
@@ -448,7 +442,7 @@ for ano in anos:
 
 
     # --------------------------------------------------------
-    # GeoJSON
+    # GEOJSON
     # --------------------------------------------------------
 
     folium.GeoJson(
@@ -516,32 +510,22 @@ template_legenda = """
 
     width: 270px;
 
-    background-color:
-        rgba(255,255,255,0.95);
+    background-color: rgba(255,255,255,0.95);
 
-    border:
-        2px solid #777;
+    border: 2px solid #777;
+    border-radius: 6px;
 
-    border-radius:
-        6px;
+    z-index: 9999;
 
-    z-index:
-        9999;
+    padding: 12px;
 
-    padding:
-        12px;
+    font-size: 13px;
 
-    font-size:
-        13px;
+    font-family: Arial, sans-serif;
 
-    font-family:
-        Arial, sans-serif;
+    line-height: 1.4;
 
-    line-height:
-        1.4;
-
-    box-shadow:
-        0 1px 5px rgba(0,0,0,0.4);
+    box-shadow: 0 1px 5px rgba(0,0,0,0.4);
 ">
 
 
@@ -574,7 +558,7 @@ template_legenda = """
 </div>
 
 
-<!-- ATÉ 10 MIL -->
+<!-- ATÉ R$ 10 MIL -->
 
 <div style="margin-bottom:3px;">
 
@@ -592,7 +576,7 @@ template_legenda = """
 </div>
 
 
-<!-- 10 MIL A 100 MIL -->
+<!-- R$ 10 MIL A R$ 100 MIL -->
 
 <div style="margin-bottom:3px;">
 
@@ -610,7 +594,7 @@ template_legenda = """
 </div>
 
 
-<!-- 100 MIL A 1 MILHÃO -->
+<!-- R$ 100 MIL A R$ 1 MILHÃO -->
 
 <div style="margin-bottom:3px;">
 
@@ -628,7 +612,7 @@ template_legenda = """
 </div>
 
 
-<!-- 1 A 10 MILHÕES -->
+<!-- R$ 1 MI A R$ 10 MI -->
 
 <div style="margin-bottom:3px;">
 
@@ -646,7 +630,7 @@ template_legenda = """
 </div>
 
 
-<!-- 10 A 100 MILHÕES -->
+<!-- R$ 10 MI A R$ 100 MI -->
 
 <div style="margin-bottom:3px;">
 
@@ -664,7 +648,7 @@ template_legenda = """
 </div>
 
 
-<!-- ACIMA DE 100 MILHÕES -->
+<!-- ACIMA DE R$ 100 MI -->
 
 <div>
 
@@ -685,20 +669,15 @@ template_legenda = """
 <!-- CRÉDITOS -->
 
 <div style="
-    border-top:
-        1px solid #bbb;
+    border-top: 1px solid #bbb;
 
-    margin-top:
-        10px;
+    margin-top: 10px;
 
-    padding-top:
-        8px;
+    padding-top: 8px;
 
-    font-size:
-        11px;
+    font-size: 11px;
 
-    line-height:
-        1.45;
+    line-height: 1.45;
 ">
 
 <b>Autoria:</b>
