@@ -3,7 +3,7 @@ name: Atualizar WebGIS CFEM
 on:
  workflow_dispatch:
 
-  schedule:
+ schedule:
     - cron: "0 9 * * 1"
 
 jobs:
