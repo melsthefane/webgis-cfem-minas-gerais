@@ -2,6 +2,7 @@ import pandas as pd
 import geopandas as gpd
 import folium
 import requests
+
 from io import BytesIO
 from datetime import datetime
 from branca.element import Template, MacroElement
@@ -237,7 +238,49 @@ folium.TileLayer(
 
 
 # ============================================================
-# 10. CRIAR CAMADAS POR ANO
+# 10. TÍTULO DO MAPA
+# ============================================================
+
+titulo_html = """
+<div style="
+    position: fixed;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 9999;
+    background-color: rgba(255,255,255,0.95);
+    border: 2px solid #777;
+    border-radius: 6px;
+    padding: 10px 20px;
+    box-shadow: 0 1px 5px rgba(0,0,0,0.4);
+    text-align: center;
+    font-family: Arial, sans-serif;
+    min-width: 340px;
+">
+    <div style="
+        font-size: 20px;
+        font-weight: bold;
+    ">
+        WEBGIS CFEM — MINAS GERAIS
+    </div>
+
+    <div style="
+        font-size: 12px;
+        margin-top: 3px;
+    ">
+        Arrecadação da Compensação Financeira pela Exploração Mineral
+        — 2022 a 2026
+    </div>
+</div>
+"""
+
+mapa_cfem.get_root().html.add_child(
+    folium.Element(titulo_html)
+)
+
+
+# ============================================================
+# 11. CRIAR CAMADAS POR ANO
 # ============================================================
 
 for ano in anos:
@@ -262,9 +305,10 @@ for ano in anos:
     geo_ano["CFEM_Total"] = (
         geo_ano["CFEM_Total"]
         .fillna(0)
+        .astype(float)
     )
 
-    geo_ano["Ano"] = ano
+    geo_ano["Ano"] = int(ano)
 
 
     # Formatação monetária brasileira
@@ -346,7 +390,7 @@ for ano in anos:
 
 
 # ============================================================
-# 11. LEGENDA
+# 12. LEGENDA
 # ============================================================
 
 template_legenda = """
@@ -357,12 +401,13 @@ position: fixed;
 bottom: 30px;
 left: 30px;
 width: 245px;
-background-color: white;
+background-color: rgba(255,255,255,0.95);
 border: 2px solid #777;
 border-radius: 6px;
 z-index: 9999;
 padding: 12px;
 font-size: 13px;
+font-family: Arial, sans-serif;
 box-shadow: 0 1px 5px rgba(0,0,0,0.4);
 ">
 
@@ -374,37 +419,86 @@ CFEM arrecadada
 </div>
 
 <div>
-<span style="background:#eeeeee;width:18px;height:18px;display:inline-block;"></span>
+<span style="
+background:#eeeeee;
+width:18px;
+height:18px;
+display:inline-block;
+border:1px solid #999;
+vertical-align:middle;">
+</span>
 &nbsp; Sem arrecadação
 </div>
 
 <div>
-<span style="background:#ffffcc;width:18px;height:18px;display:inline-block;"></span>
+<span style="
+background:#ffffcc;
+width:18px;
+height:18px;
+display:inline-block;
+border:1px solid #999;
+vertical-align:middle;">
+</span>
 &nbsp; Até R$ 10 mil
 </div>
 
 <div>
-<span style="background:#ffeda0;width:18px;height:18px;display:inline-block;"></span>
+<span style="
+background:#ffeda0;
+width:18px;
+height:18px;
+display:inline-block;
+border:1px solid #999;
+vertical-align:middle;">
+</span>
 &nbsp; R$ 10 mil – R$ 100 mil
 </div>
 
 <div>
-<span style="background:#fed976;width:18px;height:18px;display:inline-block;"></span>
+<span style="
+background:#fed976;
+width:18px;
+height:18px;
+display:inline-block;
+border:1px solid #999;
+vertical-align:middle;">
+</span>
 &nbsp; R$ 100 mil – R$ 1 milhão
 </div>
 
 <div>
-<span style="background:#feb24c;width:18px;height:18px;display:inline-block;"></span>
+<span style="
+background:#feb24c;
+width:18px;
+height:18px;
+display:inline-block;
+border:1px solid #999;
+vertical-align:middle;">
+</span>
 &nbsp; R$ 1 mi – R$ 10 milhões
 </div>
 
 <div>
-<span style="background:#f03b20;width:18px;height:18px;display:inline-block;"></span>
+<span style="
+background:#f03b20;
+width:18px;
+height:18px;
+display:inline-block;
+border:1px solid #999;
+vertical-align:middle;">
+</span>
 &nbsp; R$ 10 mi – R$ 100 milhões
 </div>
 
 <div>
-<span style="background:#bd0026;width:18px;height:18px;display:inline-block;"></span>
+<span style="
+background:#bd0026;
+width:18px;
+height:18px;
+display:inline-block;
+border:1px solid #999;
+vertical-align:middle;">
+</span>
 &nbsp; Acima de R$ 100 milhões
 </div>
 
@@ -413,7 +507,9 @@ CFEM arrecadada
 {% endmacro %}
 """
 
+
 macro_legenda = MacroElement()
+
 macro_legenda._template = Template(
     template_legenda
 )
@@ -424,7 +520,7 @@ mapa_cfem.get_root().add_child(
 
 
 # ============================================================
-# 12. CONTROLE DE CAMADAS
+# 13. CONTROLE DE CAMADAS
 # ============================================================
 
 folium.LayerControl(
@@ -433,7 +529,7 @@ folium.LayerControl(
 
 
 # ============================================================
-# 13. ENQUADRAR MINAS GERAIS
+# 14. ENQUADRAR MINAS GERAIS
 # ============================================================
 
 minx, miny, maxx, maxy = (
@@ -449,7 +545,7 @@ mapa_cfem.fit_bounds(
 
 
 # ============================================================
-# 14. SALVAR INDEX.HTML
+# 15. SALVAR INDEX.HTML
 # ============================================================
 
 mapa_cfem.save(
@@ -458,7 +554,7 @@ mapa_cfem.save(
 
 
 # ============================================================
-# 15. FINALIZAÇÃO
+# 16. FINALIZAÇÃO
 # ============================================================
 
 data_execucao = datetime.now().strftime(
