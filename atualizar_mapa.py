@@ -10,17 +10,22 @@ import requests
 
 # ============================================================
 # WEBGIS CFEM - MINAS GERAIS
-# ETAPA 7
+# ETAPA 8
 #
 # Recursos:
 # - atualização automática dos dados da ANM
 # - filtro por ano
 # - filtro inteligente por substância
 # - busca inteligente por município
-# - zoom automático no município
+# - clique direto no município
+# - zoom automático
 # - indicadores dinâmicos
-# - ranking municipal dinâmico Top 10
-# - ranking clicável com zoom no município
+# - ranking municipal Top 10
+# - ranking clicável
+# - painel do município selecionado
+# - participação no total estadual
+# - posição no ranking
+# - série histórica municipal
 # ============================================================
 
 
@@ -36,6 +41,7 @@ ARQUIVO_DADOS = "dados_cfem.json"
 
 print("=" * 60)
 print("WEBGIS CFEM - MINAS GERAIS")
+print("ETAPA 8")
 print("Iniciando atualização...")
 print("=" * 60)
 
@@ -230,8 +236,7 @@ cfem_total = (
     .sum()
     .rename(
         columns={
-            "ValorRecolhido":
-                "CFEM_Total"
+            "ValorRecolhido": "CFEM_Total"
         }
     )
 )
@@ -264,8 +269,7 @@ cfem_substancias = (
     .sum()
     .rename(
         columns={
-            "ValorRecolhido":
-                "CFEM_Total"
+            "ValorRecolhido": "CFEM_Total"
         }
     )
 )
@@ -282,7 +286,7 @@ print(
 
 
 # ============================================================
-# 12. LISTA DE SUBSTÂNCIAS
+# 12. SUBSTÂNCIAS
 # ============================================================
 
 todas_substancias = sorted(
@@ -337,7 +341,7 @@ for numero, substancia in enumerate(
 
 
 # ============================================================
-# 14. GERAR dados_cfem.json
+# 14. GERAR JSON
 # ============================================================
 
 print(
@@ -407,7 +411,7 @@ print(
 
 
 # ============================================================
-# 15. CARREGAR MUNICÍPIOS
+# 15. MUNICÍPIOS
 # ============================================================
 
 print(
@@ -448,7 +452,7 @@ print(
 
 
 # ============================================================
-# 16. PREPARAR ANO INICIAL
+# 16. ANO INICIAL
 # ============================================================
 
 dados_iniciais = cfem_total[
@@ -481,7 +485,7 @@ geo_inicial["Ano"] = (
 
 
 # ============================================================
-# 17. FUNÇÃO DE COR
+# 17. COR
 # ============================================================
 
 def cor_cfem(valor):
@@ -512,7 +516,7 @@ def cor_cfem(valor):
 
 
 # ============================================================
-# 18. CRIAR MAPA
+# 18. MAPA
 # ============================================================
 
 print(
@@ -520,18 +524,13 @@ print(
 )
 
 mapa_cfem = folium.Map(
-
     location=[
         -18.5,
         -44.5
     ],
-
     zoom_start=6,
-
     tiles=None,
-
     control_scale=True,
-
     prefer_canvas=True
 )
 
@@ -566,7 +565,7 @@ folium.TileLayer(
 
 
 # ============================================================
-# 20. ESRI WORLD TOPO
+# 20. ESRI
 # ============================================================
 
 folium.TileLayer(
@@ -594,7 +593,7 @@ folium.TileLayer(
 
 
 # ============================================================
-# 21. CAMADA MUNICIPAL
+# 21. GEOJSON
 # ============================================================
 
 camada_municipios = folium.GeoJson(
@@ -651,7 +650,7 @@ nome_mapa_js = (
 
 
 # ============================================================
-# 23. LIMITES DE MINAS GERAIS
+# 23. LIMITES
 # ============================================================
 
 minx, miny, maxx, maxy = (
@@ -659,17 +658,14 @@ minx, miny, maxx, maxy = (
 )
 
 limites_mg = [
-
     [
         float(miny),
         float(minx)
     ],
-
     [
         float(maxy),
         float(maxx)
     ]
-
 ]
 
 limites_mg_json = json.dumps(
@@ -703,7 +699,7 @@ mapa_cfem.get_root().html.add_child(
 
 
 # ============================================================
-# 25. DADOS PARA JAVASCRIPT
+# 25. JSON PARA JAVASCRIPT
 # ============================================================
 
 anos_json = json.dumps(
@@ -722,7 +718,6 @@ principais_json = json.dumps(
 )
 
 municipios_json = json.dumps(
-
     municipios[
         [
             "CD_MUN",
@@ -735,7 +730,6 @@ municipios_json = json.dumps(
     .to_dict(
         orient="records"
     ),
-
     ensure_ascii=False
 )
 
@@ -743,8 +737,7 @@ municipios_json = json.dumps(
 # ============================================================
 # 26. INTERFACE
 #
-# IMPORTANTE:
-# NÃO USAR f-string NESTE BLOCO.
+# NÃO TRANSFORMAR EM f-string.
 # ============================================================
 
 interface_html = r"""
@@ -759,49 +752,24 @@ interface_html = r"""
     top: 10px;
     left: 70px;
     z-index: 9998;
-
-    background:
-        rgba(255,255,255,0.96);
-
-    border:
-        1px solid #888;
-
-    border-radius:
-        7px;
-
-    padding:
-        9px 16px;
-
-    box-shadow:
-        0 2px 7px rgba(0,0,0,0.25);
-
-    font-family:
-        Arial,
-        sans-serif;
+    background: rgba(255,255,255,0.96);
+    border: 1px solid #888;
+    border-radius: 7px;
+    padding: 9px 16px;
+    box-shadow: 0 2px 7px rgba(0,0,0,0.25);
+    font-family: Arial, sans-serif;
 }
-
 
 #titulo-webgis .titulo-principal {
-    font-size:
-        19px;
-
-    font-weight:
-        bold;
-
-    white-space:
-        nowrap;
+    font-size: 19px;
+    font-weight: bold;
+    white-space: nowrap;
 }
 
-
 #titulo-webgis .titulo-secundario {
-    font-size:
-        12px;
-
-    margin-top:
-        4px;
-
-    white-space:
-        nowrap;
+    font-size: 12px;
+    margin-top: 4px;
+    white-space: nowrap;
 }
 
 
@@ -810,78 +778,33 @@ interface_html = r"""
    ========================================================== */
 
 #painel-cfem {
-
-    position:
-        fixed;
-
-    top:
-        95px;
-
-    right:
-        20px;
-
-    width:
-        350px;
-
-    max-height:
-        calc(100vh - 120px);
-
-    overflow-y:
-        auto;
-
-    z-index:
-        9999;
-
-    background:
-        rgba(255,255,255,0.97);
-
-    border:
-        1px solid #999;
-
-    border-radius:
-        8px;
-
-    padding:
-        14px;
-
-    box-sizing:
-        border-box;
-
-    box-shadow:
-        0 2px 8px rgba(0,0,0,0.28);
-
-    font-family:
-        Arial,
-        sans-serif;
+    position: fixed;
+    top: 90px;
+    right: 20px;
+    width: 365px;
+    max-height: calc(100vh - 115px);
+    overflow-y: auto;
+    z-index: 9999;
+    background: rgba(255,255,255,0.97);
+    border: 1px solid #999;
+    border-radius: 8px;
+    padding: 14px;
+    box-sizing: border-box;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.28);
+    font-family: Arial, sans-serif;
 }
-
 
 #painel-cfem h3 {
-
-    margin:
-        0 0 12px 0;
-
-    font-size:
-        16px;
+    margin: 0 0 12px 0;
+    font-size: 16px;
 }
 
-
 .rotulo-cfem {
-
-    display:
-        block;
-
-    font-size:
-        12px;
-
-    font-weight:
-        bold;
-
-    margin:
-        10px 0 5px 0;
-
-    color:
-        #444;
+    display: block;
+    font-size: 12px;
+    font-weight: bold;
+    margin: 10px 0 5px 0;
+    color: #444;
 }
 
 
@@ -892,158 +815,80 @@ interface_html = r"""
 #filtro-ano,
 #busca-substancia,
 #busca-municipio {
-
-    width:
-        100%;
-
-    padding:
-        8px;
-
-    border:
-        1px solid #aaa;
-
-    border-radius:
-        5px;
-
-    background:
-        white;
-
-    box-sizing:
-        border-box;
-
-    font-size:
-        13px;
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #aaa;
+    border-radius: 5px;
+    background: white;
+    box-sizing: border-box;
+    font-size: 13px;
 }
-
 
 #busca-substancia:focus,
 #busca-municipio:focus {
-
-    outline:
-        2px solid #777;
-
-    outline-offset:
-        1px;
+    outline: 2px solid #777;
+    outline-offset: 1px;
 }
 
 
 /* ==========================================================
-   RESULTADOS DAS BUSCAS
+   BUSCAS
    ========================================================== */
 
 #lista-substancias,
 #lista-municipios {
-
-    display:
-        none;
-
-    max-height:
-        220px;
-
-    overflow-y:
-        auto;
-
-    margin-top:
-        3px;
-
-    border:
-        1px solid #bbb;
-
-    border-radius:
-        5px;
-
-    background:
-        white;
-
-    box-shadow:
-        0 2px 5px rgba(0,0,0,0.15);
+    display: none;
+    max-height: 220px;
+    overflow-y: auto;
+    margin-top: 3px;
+    border: 1px solid #bbb;
+    border-radius: 5px;
+    background: white;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.15);
 }
-
 
 .item-substancia,
 .item-municipio {
-
-    padding:
-        8px 9px;
-
-    font-size:
-        12px;
-
-    cursor:
-        pointer;
-
-    border-bottom:
-        1px solid #eee;
+    padding: 8px 9px;
+    font-size: 12px;
+    cursor: pointer;
+    border-bottom: 1px solid #eee;
 }
-
 
 .item-substancia:hover,
 .item-municipio:hover {
-
-    background:
-        #eeeeee;
+    background: #eeeeee;
 }
-
 
 .item-principal {
-
-    font-weight:
-        bold;
+    font-weight: bold;
 }
 
-
 .sem-resultado {
-
-    padding:
-        9px;
-
-    font-size:
-        11px;
-
-    color:
-        #777;
+    padding: 9px;
+    font-size: 11px;
+    color: #777;
 }
 
 
 /* ==========================================================
-   BOTÃO VOLTAR
+   BOTÃO
    ========================================================== */
 
 #botao-voltar-mg {
-
-    width:
-        100%;
-
-    margin-top:
-        8px;
-
-    padding:
-        8px;
-
-    border:
-        1px solid #999;
-
-    border-radius:
-        5px;
-
-    background:
-        #f5f5f5;
-
-    box-sizing:
-        border-box;
-
-    font-size:
-        11px;
-
-    cursor:
-        pointer;
+    width: 100%;
+    margin-top: 8px;
+    padding: 8px;
+    border: 1px solid #999;
+    border-radius: 5px;
+    background: #f5f5f5;
+    box-sizing: border-box;
+    font-size: 11px;
+    cursor: pointer;
 }
 
-
 #botao-voltar-mg:hover {
-
-    background:
-        #e9e9e9;
+    background: #e9e9e9;
 }
 
 
@@ -1052,312 +897,277 @@ interface_html = r"""
    ========================================================== */
 
 #indicadores-cfem {
-
-    margin-top:
-        13px;
-
-    padding-top:
-        10px;
-
-    border-top:
-        1px solid #ddd;
+    margin-top: 13px;
+    padding-top: 10px;
+    border-top: 1px solid #ddd;
 }
 
-
-.indicadores-titulo {
-
-    font-size:
-        12px;
-
-    font-weight:
-        bold;
-
-    color:
-        #444;
-
-    margin-bottom:
-        7px;
+.secao-titulo {
+    font-size: 12px;
+    font-weight: bold;
+    color: #444;
+    margin-bottom: 7px;
 }
-
 
 .grade-indicadores {
-
-    display:
-        grid;
-
-    grid-template-columns:
-        1fr 1fr;
-
-    gap:
-        7px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 7px;
 }
-
 
 .cartao-indicador {
-
-    border:
-        1px solid #ddd;
-
-    border-radius:
-        6px;
-
-    background:
-        #fafafa;
-
-    padding:
-        8px;
-
-    min-height:
-        55px;
-
-    box-sizing:
-        border-box;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    background: #fafafa;
+    padding: 8px;
+    min-height: 55px;
+    box-sizing: border-box;
 }
-
 
 .cartao-indicador.total {
-
-    grid-column:
-        1 / -1;
+    grid-column: 1 / -1;
 }
-
 
 .indicador-rotulo {
-
-    font-size:
-        10px;
-
-    color:
-        #666;
-
-    margin-bottom:
-        4px;
+    font-size: 10px;
+    color: #666;
+    margin-bottom: 4px;
 }
-
 
 .indicador-valor {
-
-    font-size:
-        14px;
-
-    font-weight:
-        bold;
-
-    line-height:
-        1.2;
-
-    word-break:
-        break-word;
+    font-size: 14px;
+    font-weight: bold;
+    line-height: 1.2;
+    word-break: break-word;
 }
 
-
 .indicador-detalhe {
-
-    font-size:
-        10px;
-
-    color:
-        #666;
-
-    margin-top:
-        3px;
-
-    line-height:
-        1.25;
+    font-size: 10px;
+    color: #666;
+    margin-top: 3px;
+    line-height: 1.25;
 }
 
 
 /* ==========================================================
-   ETAPA 7
    RANKING
    ========================================================== */
 
 #ranking-cfem {
-
-    margin-top:
-        13px;
-
-    padding-top:
-        10px;
-
-    border-top:
-        1px solid #ddd;
+    margin-top: 13px;
+    padding-top: 10px;
+    border-top: 1px solid #ddd;
 }
-
 
 .ranking-cabecalho {
-
-    display:
-        flex;
-
-    align-items:
-        center;
-
-    justify-content:
-        space-between;
-
-    margin-bottom:
-        7px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 7px;
 }
-
-
-.ranking-titulo {
-
-    font-size:
-        12px;
-
-    font-weight:
-        bold;
-
-    color:
-        #444;
-}
-
 
 .ranking-top {
-
-    font-size:
-        9px;
-
-    color:
-        #777;
-
-    text-transform:
-        uppercase;
-
-    letter-spacing:
-        0.3px;
+    font-size: 9px;
+    color: #777;
+    text-transform: uppercase;
 }
-
 
 #lista-ranking {
-
-    border:
-        1px solid #ddd;
-
-    border-radius:
-        6px;
-
-    overflow:
-        hidden;
-
-    background:
-        white;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    overflow: hidden;
+    background: white;
 }
-
 
 .item-ranking {
-
-    display:
-        grid;
-
-    grid-template-columns:
-        28px 1fr auto;
-
-    align-items:
-        center;
-
-    gap:
-        6px;
-
-    padding:
-        7px 8px;
-
-    border-bottom:
-        1px solid #eee;
-
-    cursor:
-        pointer;
-
-    transition:
-        background 0.15s ease;
+    display: grid;
+    grid-template-columns: 28px 1fr auto;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 8px;
+    border-bottom: 1px solid #eee;
+    cursor: pointer;
 }
-
 
 .item-ranking:last-child {
-
-    border-bottom:
-        none;
+    border-bottom: none;
 }
-
 
 .item-ranking:hover {
-
-    background:
-        #f1f1f1;
+    background: #f1f1f1;
 }
 
+.item-ranking.selecionado {
+    background: #e8e8e8;
+}
 
 .ranking-posicao {
-
-    font-size:
-        11px;
-
-    font-weight:
-        bold;
-
-    color:
-        #777;
-
-    text-align:
-        center;
+    font-size: 11px;
+    font-weight: bold;
+    color: #777;
+    text-align: center;
 }
-
 
 .ranking-municipio {
-
-    font-size:
-        11px;
-
-    font-weight:
-        600;
-
-    color:
-        #333;
-
-    overflow:
-        hidden;
-
-    text-overflow:
-        ellipsis;
-
-    white-space:
-        nowrap;
+    font-size: 11px;
+    font-weight: 600;
+    color: #333;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
-
 
 .ranking-valor {
+    font-size: 10px;
+    font-weight: bold;
+    color: #333;
+    white-space: nowrap;
+    text-align: right;
+}
 
-    font-size:
-        10px;
-
-    font-weight:
-        bold;
-
-    color:
-        #333;
-
-    white-space:
-        nowrap;
-
-    text-align:
-        right;
+.ranking-vazio {
+    padding: 10px;
+    font-size: 11px;
+    color: #777;
+    text-align: center;
 }
 
 
-.ranking-vazio {
+/* ==========================================================
+   ETAPA 8 - PAINEL MUNICIPAL
+   ========================================================== */
 
-    padding:
-        10px;
+#painel-municipio {
+    display: none;
+    margin-top: 13px;
+    padding-top: 10px;
+    border-top: 2px solid #777;
+}
 
-    font-size:
-        11px;
+.municipio-cabecalho {
+    margin-bottom: 9px;
+}
 
-    color:
-        #777;
+.municipio-pre-titulo {
+    font-size: 9px;
+    color: #777;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
 
-    text-align:
-        center;
+#municipio-nome {
+    margin-top: 3px;
+    font-size: 17px;
+    font-weight: bold;
+    color: #222;
+}
+
+.municipio-grade {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 7px;
+}
+
+.municipio-cartao {
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    background: #fafafa;
+    padding: 8px;
+    box-sizing: border-box;
+}
+
+.municipio-cartao.valor-principal {
+    grid-column: 1 / -1;
+}
+
+.municipio-cartao-rotulo {
+    font-size: 9px;
+    color: #666;
+    margin-bottom: 4px;
+}
+
+.municipio-cartao-valor {
+    font-size: 13px;
+    font-weight: bold;
+    color: #222;
+}
+
+#municipio-valor {
+    font-size: 16px;
+}
+
+#serie-historica {
+    margin-top: 12px;
+}
+
+.serie-cabecalho {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 7px;
+}
+
+.serie-subtitulo {
+    font-size: 9px;
+    color: #777;
+}
+
+#serie-barras {
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 8px;
+    background: #fff;
+}
+
+.serie-linha {
+    display: grid;
+    grid-template-columns: 42px 1fr 82px;
+    align-items: center;
+    gap: 6px;
+    min-height: 27px;
+}
+
+.serie-ano {
+    font-size: 10px;
+    font-weight: bold;
+    color: #555;
+}
+
+.serie-ano.ativo {
+    color: #000;
+}
+
+.serie-barra-fundo {
+    width: 100%;
+    height: 11px;
+    background: #eeeeee;
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.serie-barra {
+    height: 100%;
+    min-width: 0;
+    background: #777777;
+    border-radius: 3px;
+}
+
+.serie-linha.ativa .serie-barra {
+    background: #222222;
+}
+
+.serie-valor {
+    font-size: 9px;
+    text-align: right;
+    color: #444;
+    white-space: nowrap;
+}
+
+.serie-nota {
+    margin-top: 7px;
+    font-size: 9px;
+    line-height: 1.35;
+    color: #777;
 }
 
 
@@ -1366,40 +1176,19 @@ interface_html = r"""
    ========================================================== */
 
 #status-consulta {
-
-    margin-top:
-        12px;
-
-    padding-top:
-        9px;
-
-    border-top:
-        1px solid #ddd;
-
-    font-size:
-        11px;
-
-    line-height:
-        1.5;
-
-    color:
-        #555;
+    margin-top: 12px;
+    padding-top: 9px;
+    border-top: 1px solid #ddd;
+    font-size: 11px;
+    line-height: 1.5;
+    color: #555;
 }
 
-
 #carregando-cfem {
-
-    display:
-        none;
-
-    margin-top:
-        8px;
-
-    font-size:
-        11px;
-
-    font-weight:
-        bold;
+    display: none;
+    margin-top: 8px;
+    font-size: 11px;
+    font-weight: bold;
 }
 
 
@@ -1408,121 +1197,52 @@ interface_html = r"""
    ========================================================== */
 
 #legenda-cfem {
-
-    position:
-        fixed;
-
-    bottom:
-        30px;
-
-    left:
-        30px;
-
-    width:
-        275px;
-
-    z-index:
-        9997;
-
-    background:
-        rgba(255,255,255,0.96);
-
-    border:
-        1px solid #888;
-
-    border-radius:
-        7px;
-
-    padding:
-        12px;
-
-    box-sizing:
-        border-box;
-
-    box-shadow:
-        0 2px 7px rgba(0,0,0,0.25);
-
-    font-family:
-        Arial,
-        sans-serif;
-
-    font-size:
-        12px;
+    position: fixed;
+    bottom: 30px;
+    left: 30px;
+    width: 275px;
+    z-index: 9997;
+    background: rgba(255,255,255,0.96);
+    border: 1px solid #888;
+    border-radius: 7px;
+    padding: 12px;
+    box-sizing: border-box;
+    box-shadow: 0 2px 7px rgba(0,0,0,0.25);
+    font-family: Arial, sans-serif;
+    font-size: 12px;
 }
-
 
 .legenda-titulo {
-
-    font-size:
-        14px;
-
-    font-weight:
-        bold;
-
-    margin-bottom:
-        8px;
+    font-size: 14px;
+    font-weight: bold;
+    margin-bottom: 8px;
 }
-
 
 .legenda-item {
-
-    margin-bottom:
-        4px;
+    margin-bottom: 4px;
 }
-
 
 .caixa-cor {
-
-    display:
-        inline-block;
-
-    width:
-        16px;
-
-    height:
-        16px;
-
-    margin-right:
-        6px;
-
-    vertical-align:
-        middle;
-
-    border:
-        1px solid #999;
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    margin-right: 6px;
+    vertical-align: middle;
+    border: 1px solid #999;
 }
-
 
 .creditos-cfem {
-
-    border-top:
-        1px solid #bbb;
-
-    margin-top:
-        9px;
-
-    padding-top:
-        7px;
-
-    font-size:
-        10px;
-
-    line-height:
-        1.45;
+    border-top: 1px solid #bbb;
+    margin-top: 9px;
+    padding-top: 7px;
+    font-size: 10px;
+    line-height: 1.45;
 }
 
-
 .tooltip-cfem {
-
-    font-family:
-        Arial,
-        sans-serif;
-
-    font-size:
-        12px;
-
-    line-height:
-        1.5;
+    font-family: Arial, sans-serif;
+    font-size: 12px;
+    line-height: 1.5;
 }
 
 
@@ -1533,184 +1253,102 @@ interface_html = r"""
 @media screen and (max-width: 768px) {
 
     #titulo-webgis {
-
-        top:
-            8px;
-
-        left:
-            50px;
-
-        right:
-            8px;
-
-        padding:
-            7px 9px;
+        top: 8px;
+        left: 50px;
+        right: 8px;
+        padding: 7px 9px;
     }
-
 
     #titulo-webgis .titulo-principal {
-
-        font-size:
-            14px;
-
-        white-space:
-            normal;
+        font-size: 14px;
+        white-space: normal;
     }
-
 
     #titulo-webgis .titulo-secundario {
-
-        display:
-            none;
+        display: none;
     }
-
 
     #painel-cfem {
-
-        top:
-            auto;
-
-        bottom:
-            10px;
-
-        left:
-            8px;
-
-        right:
-            8px;
-
-        width:
-            auto;
-
-        max-height:
-            52vh;
-
-        padding:
-            10px;
+        top: auto;
+        bottom: 10px;
+        left: 8px;
+        right: 8px;
+        width: auto;
+        max-height: 55vh;
+        padding: 10px;
     }
-
 
     #painel-cfem h3 {
-
-        font-size:
-            14px;
-
-        margin-bottom:
-            5px;
+        font-size: 14px;
+        margin-bottom: 5px;
     }
-
 
     .rotulo-cfem {
-
-        margin:
-            6px 0 4px 0;
-
-        font-size:
-            11px;
+        margin: 6px 0 4px 0;
+        font-size: 11px;
     }
-
 
     #filtro-ano,
     #busca-substancia,
     #busca-municipio {
-
-        padding:
-            7px;
-
-        font-size:
-            12px;
+        padding: 7px;
+        font-size: 12px;
     }
-
 
     #lista-substancias,
     #lista-municipios {
-
-        max-height:
-            150px;
+        max-height: 150px;
     }
-
 
     .indicador-valor {
-
-        font-size:
-            12px;
+        font-size: 12px;
     }
-
 
     .item-ranking {
-
-        grid-template-columns:
-            24px 1fr auto;
-
-        padding:
-            6px;
+        grid-template-columns: 24px 1fr auto;
+        padding: 6px;
     }
-
 
     .ranking-municipio {
-
-        font-size:
-            10px;
+        font-size: 10px;
     }
-
 
     .ranking-valor {
-
-        font-size:
-            9px;
+        font-size: 9px;
     }
 
+    #municipio-nome {
+        font-size: 15px;
+    }
+
+    .serie-linha {
+        grid-template-columns: 38px 1fr 72px;
+    }
 
     #legenda-cfem {
-
-        top:
-            65px;
-
-        bottom:
-            auto;
-
-        left:
-            8px;
-
-        width:
-            190px;
-
-        padding:
-            8px;
-
-        font-size:
-            10px;
+        top: 65px;
+        bottom: auto;
+        left: 8px;
+        width: 190px;
+        padding: 8px;
+        font-size: 10px;
     }
-
 
     .legenda-titulo {
-
-        font-size:
-            11px;
+        font-size: 11px;
     }
-
 
     .caixa-cor {
-
-        width:
-            12px;
-
-        height:
-            12px;
+        width: 12px;
+        height: 12px;
     }
-
 
     .creditos-cfem {
-
-        display:
-            none;
+        display: none;
     }
 
-
     .leaflet-control-layers {
-
-        font-size:
-            10px;
+        font-size: 10px;
     }
 
 }
@@ -1719,7 +1357,7 @@ interface_html = r"""
 
 
 <!-- ========================================================
-     PAINEL
+     PAINEL PRINCIPAL
      ======================================================== -->
 
 <div id="painel-cfem">
@@ -1736,7 +1374,6 @@ interface_html = r"""
         Ano
     </label>
 
-
     <select id="filtro-ano">
     </select>
 
@@ -1748,7 +1385,6 @@ interface_html = r"""
         Substância mineral
     </label>
 
-
     <input
         id="busca-substancia"
         type="text"
@@ -1756,7 +1392,6 @@ interface_html = r"""
         autocomplete="off"
         placeholder="Digite o nome da substância..."
     >
-
 
     <div id="lista-substancias">
     </div>
@@ -1769,14 +1404,12 @@ interface_html = r"""
         Município
     </label>
 
-
     <input
         id="busca-municipio"
         type="text"
         autocomplete="off"
         placeholder="Digite o nome do município..."
     >
-
 
     <div id="lista-municipios">
     </div>
@@ -1796,13 +1429,11 @@ interface_html = r"""
 
     <div id="indicadores-cfem">
 
-        <div class="indicadores-titulo">
+        <div class="secao-titulo">
             Indicadores da consulta
         </div>
 
-
         <div class="grade-indicadores">
-
 
             <div class="cartao-indicador total">
 
@@ -1858,21 +1489,20 @@ interface_html = r"""
 
             </div>
 
-
         </div>
 
     </div>
 
 
     <!-- ====================================================
-         ETAPA 7 - RANKING
+         RANKING
          ==================================================== -->
 
     <div id="ranking-cfem">
 
         <div class="ranking-cabecalho">
 
-            <div class="ranking-titulo">
+            <div class="secao-titulo">
                 Ranking municipal
             </div>
 
@@ -1881,7 +1511,6 @@ interface_html = r"""
             </div>
 
         </div>
-
 
         <div id="lista-ranking">
 
@@ -1895,14 +1524,119 @@ interface_html = r"""
 
 
     <!-- ====================================================
+         ETAPA 8 - MUNICÍPIO SELECIONADO
+         ==================================================== -->
+
+    <div id="painel-municipio">
+
+        <div class="municipio-cabecalho">
+
+            <div class="municipio-pre-titulo">
+                Município selecionado
+            </div>
+
+            <div id="municipio-nome">
+                —
+            </div>
+
+        </div>
+
+
+        <div class="municipio-grade">
+
+            <div class="municipio-cartao valor-principal">
+
+                <div
+                    class="municipio-cartao-rotulo"
+                    id="municipio-valor-rotulo"
+                >
+                    CFEM
+                </div>
+
+                <div
+                    class="municipio-cartao-valor"
+                    id="municipio-valor"
+                >
+                    R$ 0,00
+                </div>
+
+            </div>
+
+
+            <div class="municipio-cartao">
+
+                <div class="municipio-cartao-rotulo">
+                    Participação em MG
+                </div>
+
+                <div
+                    class="municipio-cartao-valor"
+                    id="municipio-participacao"
+                >
+                    0,00%
+                </div>
+
+            </div>
+
+
+            <div class="municipio-cartao">
+
+                <div class="municipio-cartao-rotulo">
+                    Posição estadual
+                </div>
+
+                <div
+                    class="municipio-cartao-valor"
+                    id="municipio-posicao"
+                >
+                    —
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <div id="serie-historica">
+
+            <div class="serie-cabecalho">
+
+                <div class="secao-titulo">
+                    Série histórica da CFEM
+                </div>
+
+                <div
+                    class="serie-subtitulo"
+                    id="serie-substancia"
+                >
+                    Todas as substâncias
+                </div>
+
+            </div>
+
+
+            <div id="serie-barras">
+            </div>
+
+
+            <div
+                class="serie-nota"
+                id="serie-nota"
+            >
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- ====================================================
          STATUS
          ==================================================== -->
 
     <div id="status-consulta">
 
-        <b>
-            Exibindo:
-        </b>
+        <b>Exibindo:</b>
 
         <span id="status-ano">
             __ANO_PADRAO__
@@ -2036,30 +1770,23 @@ document.addEventListener(
         const mapa =
             __MAPA_JS__;
 
-
         const camadaMunicipios =
             __CAMADA_MUNICIPIOS__;
-
 
         const anos =
             __ANOS_JSON__;
 
-
         const substancias =
             __SUBSTANCIAS_JSON__;
-
 
         const principais =
             __PRINCIPAIS_JSON__;
 
-
         const municipiosBusca =
             __MUNICIPIOS_JSON__;
 
-
         const limitesMG =
             __LIMITES_MG__;
-
 
         const anoPadrao =
             __ANO_PADRAO__;
@@ -2068,13 +1795,23 @@ document.addEventListener(
         let substanciaSelecionada =
             "TODAS";
 
-
         let dadosCFEM =
             null;
 
-
         let camadaMunicipioSelecionado =
             null;
+
+        let codigoMunicipioSelecionado =
+            null;
+
+        let nomeMunicipioSelecionado =
+            null;
+
+        let valoresConsultaAtual =
+            new Map();
+
+        let rankingConsultaAtual =
+            [];
 
 
         /* ==================================================
@@ -2086,80 +1823,65 @@ document.addEventListener(
                 "filtro-ano"
             );
 
-
         const buscaSubstancia =
             document.getElementById(
                 "busca-substancia"
             );
-
 
         const listaSubstancias =
             document.getElementById(
                 "lista-substancias"
             );
 
-
         const buscaMunicipio =
             document.getElementById(
                 "busca-municipio"
             );
-
 
         const listaMunicipios =
             document.getElementById(
                 "lista-municipios"
             );
 
-
         const botaoVoltarMG =
             document.getElementById(
                 "botao-voltar-mg"
             );
-
 
         const statusAno =
             document.getElementById(
                 "status-ano"
             );
 
-
         const statusSubstancia =
             document.getElementById(
                 "status-substancia"
             );
-
 
         const carregando =
             document.getElementById(
                 "carregando-cfem"
             );
 
-
         const indicadorTotal =
             document.getElementById(
                 "indicador-total"
             );
-
 
         const indicadorMunicipios =
             document.getElementById(
                 "indicador-municipios"
             );
 
-
         const indicadorMaiorValor =
             document.getElementById(
                 "indicador-maior-valor"
             );
 
-
         const indicadorMaiorMunicipio =
             document.getElementById(
                 "indicador-maior-municipio"
             );
-
-
-        /* ETAPA 7 */
 
         const listaRanking =
             document.getElementById(
@@ -2167,8 +1889,106 @@ document.addEventListener(
             );
 
 
+        /* PAINEL MUNICIPAL */
+
+        const painelMunicipio =
+            document.getElementById(
+                "painel-municipio"
+            );
+
+        const municipioNome =
+            document.getElementById(
+                "municipio-nome"
+            );
+
+        const municipioValorRotulo =
+            document.getElementById(
+                "municipio-valor-rotulo"
+            );
+
+        const municipioValor =
+            document.getElementById(
+                "municipio-valor"
+            );
+
+        const municipioParticipacao =
+            document.getElementById(
+                "municipio-participacao"
+            );
+
+        const municipioPosicao =
+            document.getElementById(
+                "municipio-posicao"
+            );
+
+        const serieBarras =
+            document.getElementById(
+                "serie-barras"
+            );
+
+        const serieSubstancia =
+            document.getElementById(
+                "serie-substancia"
+            );
+
+        const serieNota =
+            document.getElementById(
+                "serie-nota"
+            );
+
+
         /* ==================================================
-           NORMALIZAR TEXTO
+           ÍNDICES
+           ================================================== */
+
+        const municipioPorCodigo =
+            new Map();
+
+        municipiosBusca.forEach(
+            function(municipio) {
+
+                municipioPorCodigo.set(
+                    String(
+                        municipio.CD_MUN
+                    ),
+                    municipio
+                );
+
+            }
+        );
+
+
+        const layerPorCodigo =
+            new Map();
+
+        camadaMunicipios.eachLayer(
+            function(layer) {
+
+                if (
+                    !layer.feature ||
+                    !layer.feature.properties
+                ) {
+                    return;
+                }
+
+                const codigo =
+                    String(
+                        layer.feature
+                        .properties
+                        .CD_MUN
+                    );
+
+                layerPorCodigo.set(
+                    codigo,
+                    layer
+                );
+
+            }
+        );
+
+
+        /* ==================================================
+           TEXTO
            ================================================== */
 
         function normalizar(texto) {
@@ -2188,7 +2008,7 @@ document.addEventListener(
 
 
         /* ==================================================
-           MOEDA COMPLETA
+           MOEDA
            ================================================== */
 
         function moeda(valor) {
@@ -2198,23 +2018,13 @@ document.addEventListener(
             ).toLocaleString(
                 "pt-BR",
                 {
-
-                    style:
-                        "currency",
-
-                    currency:
-                        "BRL"
-
+                    style: "currency",
+                    currency: "BRL"
                 }
             );
 
         }
 
-
-        /* ==================================================
-           MOEDA COMPACTA
-           USADA NO RANKING
-           ================================================== */
 
         function moedaCompacta(valor) {
 
@@ -2222,7 +2032,6 @@ document.addEventListener(
                 Number(
                     valor || 0
                 );
-
 
             if (
                 valor >= 1000000000
@@ -2233,12 +2042,10 @@ document.addEventListener(
                     (
                         valor /
                         1000000000
-                    )
-                    .toLocaleString(
+                    ).toLocaleString(
                         "pt-BR",
                         {
-                            maximumFractionDigits:
-                                2
+                            maximumFractionDigits: 2
                         }
                     )
                     +
@@ -2246,7 +2053,6 @@ document.addEventListener(
                 );
 
             }
-
 
             if (
                 valor >= 1000000
@@ -2257,12 +2063,10 @@ document.addEventListener(
                     (
                         valor /
                         1000000
-                    )
-                    .toLocaleString(
+                    ).toLocaleString(
                         "pt-BR",
                         {
-                            maximumFractionDigits:
-                                2
+                            maximumFractionDigits: 2
                         }
                     )
                     +
@@ -2270,7 +2074,6 @@ document.addEventListener(
                 );
 
             }
-
 
             if (
                 valor >= 1000
@@ -2281,12 +2084,10 @@ document.addEventListener(
                     (
                         valor /
                         1000
-                    )
-                    .toLocaleString(
+                    ).toLocaleString(
                         "pt-BR",
                         {
-                            maximumFractionDigits:
-                                2
+                            maximumFractionDigits: 2
                         }
                     )
                     +
@@ -2295,10 +2096,24 @@ document.addEventListener(
 
             }
 
-
             return moeda(
                 valor
             );
+
+        }
+
+
+        function percentual(valor) {
+
+            return Number(
+                valor || 0
+            ).toLocaleString(
+                "pt-BR",
+                {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                }
+            ) + "%";
 
         }
 
@@ -2314,36 +2129,29 @@ document.addEventListener(
                     valor || 0
                 );
 
-
             if (valor <= 0) {
                 return "#eeeeee";
             }
-
 
             if (valor <= 10000) {
                 return "#ffffcc";
             }
 
-
             if (valor <= 100000) {
                 return "#ffeda0";
             }
-
 
             if (valor <= 1000000) {
                 return "#fed976";
             }
 
-
             if (valor <= 10000000) {
                 return "#feb24c";
             }
 
-
             if (valor <= 100000000) {
                 return "#f03b20";
             }
-
 
             return "#bd0026";
 
@@ -2351,7 +2159,7 @@ document.addEventListener(
 
 
         /* ==================================================
-           ESTILO NORMAL
+           ESTILO
            ================================================== */
 
         function aplicarEstiloNormal(
@@ -2362,11 +2170,8 @@ document.addEventListener(
                 !layer.feature ||
                 !layer.feature.properties
             ) {
-
                 return;
-
             }
-
 
             const valor =
                 Number(
@@ -2375,10 +2180,8 @@ document.addEventListener(
                     .CFEM_Total || 0
                 );
 
-
             layer.setStyle(
                 {
-
                     fillColor:
                         corCFEM(
                             valor
@@ -2392,32 +2195,23 @@ document.addEventListener(
 
                     fillOpacity:
                         0.80
-
                 }
             );
 
         }
 
 
-        /* ==================================================
-           DESTAQUE
-           ================================================== */
-
         function aplicarDestaqueMunicipio() {
 
             if (
                 !camadaMunicipioSelecionado
             ) {
-
                 return;
-
             }
-
 
             camadaMunicipioSelecionado
             .setStyle(
                 {
-
                     color:
                         "#000000",
 
@@ -2426,10 +2220,8 @@ document.addEventListener(
 
                     fillOpacity:
                         0.95
-
                 }
             );
-
 
             if (
                 camadaMunicipioSelecionado
@@ -2452,9 +2244,7 @@ document.addEventListener(
         .slice()
         .sort(
             function(a, b) {
-
                 return b - a;
-
             }
         )
         .forEach(
@@ -2465,14 +2255,11 @@ document.addEventListener(
                         "option"
                     );
 
-
                 option.value =
                     ano;
 
-
                 option.textContent =
                     ano;
-
 
                 if (
                     Number(ano) ===
@@ -2483,7 +2270,6 @@ document.addEventListener(
                         true;
 
                 }
-
 
                 filtroAno.appendChild(
                     option
@@ -2506,7 +2292,6 @@ document.addEventListener(
                     textoBusca || ""
                 );
 
-
             listaSubstancias.innerHTML =
                 "";
 
@@ -2516,14 +2301,11 @@ document.addEventListener(
                     "div"
                 );
 
-
             itemTodas.className =
                 "item-substancia item-principal";
 
-
             itemTodas.textContent =
                 "Todas as substâncias";
-
 
             itemTodas.addEventListener(
                 "click",
@@ -2532,20 +2314,16 @@ document.addEventListener(
                     substanciaSelecionada =
                         "TODAS";
 
-
                     buscaSubstancia.value =
                         "Todas as substâncias";
 
-
                     listaSubstancias.style.display =
                         "none";
-
 
                     atualizarMapa();
 
                 }
             );
-
 
             listaSubstancias.appendChild(
                 itemTodas
@@ -2566,12 +2344,10 @@ document.addEventListener(
                             return true;
                         }
 
-
                         const nome =
                             normalizar(
                                 substancia
                             );
-
 
                         return termos.every(
                             function(termo) {
@@ -2595,10 +2371,8 @@ document.addEventListener(
                         const posicaoA =
                             principais.indexOf(a);
 
-
                         const posicaoB =
                             principais.indexOf(b);
-
 
                         if (
                             posicaoA !== -1 &&
@@ -2607,14 +2381,12 @@ document.addEventListener(
                             return -1;
                         }
 
-
                         if (
                             posicaoA === -1 &&
                             posicaoB !== -1
                         ) {
                             return 1;
                         }
-
 
                         if (
                             posicaoA !== -1 &&
@@ -2627,7 +2399,6 @@ document.addEventListener(
                             );
 
                         }
-
 
                         return a.localeCompare(
                             b,
@@ -2649,14 +2420,11 @@ document.addEventListener(
                         "div"
                     );
 
-
                 vazio.className =
                     "sem-resultado";
 
-
                 vazio.textContent =
                     "Nenhuma substância encontrada.";
-
 
                 listaSubstancias.appendChild(
                     vazio
@@ -2678,10 +2446,8 @@ document.addEventListener(
                             "div"
                         );
 
-
                     item.className =
                         "item-substancia";
-
 
                     if (
                         principais.includes(
@@ -2695,10 +2461,8 @@ document.addEventListener(
 
                     }
 
-
                     item.textContent =
                         substancia;
-
 
                     item.addEventListener(
                         "click",
@@ -2707,20 +2471,16 @@ document.addEventListener(
                             substanciaSelecionada =
                                 substancia;
 
-
                             buscaSubstancia.value =
                                 substancia;
 
-
                             listaSubstancias.style.display =
                                 "none";
-
 
                             atualizarMapa();
 
                         }
                     );
-
 
                     listaSubstancias.appendChild(
                         item
@@ -2728,7 +2488,6 @@ document.addEventListener(
 
                 }
             );
-
 
             listaSubstancias.style.display =
                 "block";
@@ -2748,14 +2507,11 @@ document.addEventListener(
                     buscaSubstancia.value =
                         "";
 
-                }
-
-                else {
+                } else {
 
                     buscaSubstancia.select();
 
                 }
-
 
                 mostrarListaSubstancias(
                     ""
@@ -2778,7 +2534,7 @@ document.addEventListener(
 
 
         /* ==================================================
-           MUNICÍPIOS
+           BUSCA MUNICIPAL
            ================================================== */
 
         function mostrarListaMunicipios(
@@ -2790,10 +2546,8 @@ document.addEventListener(
                     textoBusca || ""
                 );
 
-
             listaMunicipios.innerHTML =
                 "";
-
 
             if (!busca) {
 
@@ -2820,7 +2574,6 @@ document.addEventListener(
                                 municipio.NM_MUN
                             );
 
-
                         return termos.every(
                             function(termo) {
 
@@ -2844,14 +2597,11 @@ document.addEventListener(
                         "div"
                     );
 
-
                 vazio.className =
                     "sem-resultado";
 
-
                 vazio.textContent =
                     "Nenhum município encontrado.";
-
 
                 listaMunicipios.appendChild(
                     vazio
@@ -2873,14 +2623,11 @@ document.addEventListener(
                             "div"
                         );
 
-
                     item.className =
                         "item-municipio";
 
-
                     item.textContent =
                         municipio.NM_MUN;
-
 
                     item.addEventListener(
                         "click",
@@ -2888,12 +2635,12 @@ document.addEventListener(
 
                             selecionarMunicipio(
                                 municipio.CD_MUN,
-                                municipio.NM_MUN
+                                municipio.NM_MUN,
+                                true
                             );
 
                         }
                     );
-
 
                     listaMunicipios.appendChild(
                         item
@@ -2902,122 +2649,8 @@ document.addEventListener(
                 }
             );
 
-
             listaMunicipios.style.display =
                 "block";
-
-        }
-
-
-        /* ==================================================
-           SELECIONAR MUNICÍPIO
-           Usado pela busca E pelo ranking.
-           ================================================== */
-
-        function selecionarMunicipio(
-            codigo,
-            nome
-        ) {
-
-            buscaMunicipio.value =
-                nome;
-
-
-            listaMunicipios.style.display =
-                "none";
-
-
-            camadaMunicipioSelecionado =
-                null;
-
-
-            camadaMunicipios.eachLayer(
-                function(layer) {
-
-                    if (
-                        !layer.feature ||
-                        !layer.feature.properties
-                    ) {
-
-                        return;
-
-                    }
-
-
-                    aplicarEstiloNormal(
-                        layer
-                    );
-
-
-                    const codigoLayer =
-                        String(
-                            layer.feature
-                            .properties
-                            .CD_MUN
-                        );
-
-
-                    if (
-                        codigoLayer ===
-                        String(codigo)
-                    ) {
-
-                        camadaMunicipioSelecionado =
-                            layer;
-
-                    }
-
-                }
-            );
-
-
-            if (
-                !camadaMunicipioSelecionado
-            ) {
-
-                return;
-
-            }
-
-
-            aplicarDestaqueMunicipio();
-
-
-            const limites =
-                camadaMunicipioSelecionado
-                .getBounds();
-
-
-            if (
-                limites &&
-                limites.isValid()
-            ) {
-
-                mapa.fitBounds(
-                    limites,
-                    {
-
-                        padding:
-                            [30, 30],
-
-                        maxZoom:
-                            11
-
-                    }
-                );
-
-            }
-
-
-            if (
-                camadaMunicipioSelecionado
-                .getTooltip()
-            ) {
-
-                camadaMunicipioSelecionado
-                .openTooltip();
-
-            }
 
         }
 
@@ -3044,12 +2677,156 @@ document.addEventListener(
 
                     buscaMunicipio.select();
 
-
                     mostrarListaMunicipios(
                         buscaMunicipio.value
                     );
 
                 }
+
+            }
+        );
+
+
+        /* ==================================================
+           SELEÇÃO MUNICIPAL
+           ================================================== */
+
+        function selecionarMunicipio(
+            codigo,
+            nome,
+            fazerZoom
+        ) {
+
+            codigo =
+                String(
+                    codigo
+                );
+
+            codigoMunicipioSelecionado =
+                codigo;
+
+            nomeMunicipioSelecionado =
+                nome;
+
+            buscaMunicipio.value =
+                nome;
+
+            listaMunicipios.style.display =
+                "none";
+
+
+            camadaMunicipios.eachLayer(
+                function(layer) {
+
+                    aplicarEstiloNormal(
+                        layer
+                    );
+
+                }
+            );
+
+
+            camadaMunicipioSelecionado =
+                layerPorCodigo.get(
+                    codigo
+                ) || null;
+
+
+            if (
+                camadaMunicipioSelecionado
+            ) {
+
+                aplicarDestaqueMunicipio();
+
+
+                if (
+                    fazerZoom !== false
+                ) {
+
+                    const limites =
+                        camadaMunicipioSelecionado
+                        .getBounds();
+
+                    if (
+                        limites &&
+                        limites.isValid()
+                    ) {
+
+                        mapa.fitBounds(
+                            limites,
+                            {
+                                padding:
+                                    [30, 30],
+
+                                maxZoom:
+                                    11
+                            }
+                        );
+
+                    }
+
+                }
+
+
+                if (
+                    camadaMunicipioSelecionado
+                    .getTooltip()
+                ) {
+
+                    camadaMunicipioSelecionado
+                    .openTooltip();
+
+                }
+
+            }
+
+
+            atualizarPainelMunicipio();
+            destacarMunicipioRanking();
+
+        }
+
+
+        /* ==================================================
+           ETAPA 8
+           CLIQUE DIRETO NOS POLÍGONOS
+           ================================================== */
+
+        camadaMunicipios.eachLayer(
+            function(layer) {
+
+                if (
+                    !layer.feature ||
+                    !layer.feature.properties
+                ) {
+                    return;
+                }
+
+                const codigo =
+                    String(
+                        layer.feature
+                        .properties
+                        .CD_MUN
+                    );
+
+                const nome =
+                    layer.feature
+                    .properties
+                    .NM_MUN;
+
+
+                layer.on(
+                    "click",
+                    function() {
+
+                        selecionarMunicipio(
+                            codigo,
+                            nome,
+                            false
+                        );
+
+                    }
+                );
 
             }
         );
@@ -3107,13 +2884,20 @@ document.addEventListener(
                 buscaMunicipio.value =
                     "";
 
-
                 listaMunicipios.style.display =
                     "none";
 
+                codigoMunicipioSelecionado =
+                    null;
+
+                nomeMunicipioSelecionado =
+                    null;
 
                 camadaMunicipioSelecionado =
                     null;
+
+                painelMunicipio.style.display =
+                    "none";
 
 
                 camadaMunicipios.eachLayer(
@@ -3125,6 +2909,9 @@ document.addEventListener(
 
                     }
                 );
+
+
+                destacarMunicipioRanking();
 
 
                 mapa.fitBounds(
@@ -3143,7 +2930,6 @@ document.addEventListener(
 
             carregando.textContent =
                 "Carregando dados...";
-
 
             carregando.style.display =
                 "block";
@@ -3171,7 +2957,6 @@ document.addEventListener(
             dadosCFEM =
                 await resposta.json();
 
-
             carregando.style.display =
                 "none";
 
@@ -3184,16 +2969,187 @@ document.addEventListener(
                 erro
             );
 
-
             carregando.textContent =
                 "Erro ao carregar os dados da CFEM.";
-
 
             carregando.style.display =
                 "block";
 
-
             return;
+
+        }
+
+
+        /* ==================================================
+           OBTER VALORES DA CONSULTA
+           ================================================== */
+
+        function obterValoresConsulta(
+            ano
+        ) {
+
+            const valores =
+                new Map();
+
+
+            if (
+                substanciaSelecionada ===
+                "TODAS"
+            ) {
+
+                dadosCFEM.totais.forEach(
+                    function(item) {
+
+                        if (
+                            Number(
+                                item.Ano
+                            ) ===
+                            Number(
+                                ano
+                            )
+                        ) {
+
+                            valores.set(
+                                String(
+                                    item.CodigoMunicipio
+                                ),
+
+                                Number(
+                                    item.CFEM_Total
+                                )
+                            );
+
+                        }
+
+                    }
+                );
+
+            }
+
+            else {
+
+                dadosCFEM.substancias.forEach(
+                    function(item) {
+
+                        if (
+                            Number(
+                                item.Ano
+                            ) ===
+                            Number(
+                                ano
+                            )
+                            &&
+                            item["Substância"] ===
+                            substanciaSelecionada
+                        ) {
+
+                            valores.set(
+                                String(
+                                    item.CodigoMunicipio
+                                ),
+
+                                Number(
+                                    item.CFEM_Total
+                                )
+                            );
+
+                        }
+
+                    }
+                );
+
+            }
+
+
+            return valores;
+
+        }
+
+
+        /* ==================================================
+           RANKING COMPLETO
+           ================================================== */
+
+        function gerarRanking(
+            valoresMunicipios
+        ) {
+
+            const ranking =
+                [];
+
+
+            valoresMunicipios.forEach(
+                function(valor, codigo) {
+
+                    const numero =
+                        Number(
+                            valor || 0
+                        );
+
+                    if (
+                        numero <= 0
+                    ) {
+                        return;
+                    }
+
+
+                    const municipio =
+                        municipioPorCodigo.get(
+                            String(
+                                codigo
+                            )
+                        );
+
+                    if (
+                        !municipio
+                    ) {
+                        return;
+                    }
+
+
+                    ranking.push(
+                        {
+                            codigo:
+                                String(
+                                    codigo
+                                ),
+
+                            nome:
+                                municipio.NM_MUN,
+
+                            valor:
+                                numero
+                        }
+                    );
+
+                }
+            );
+
+
+            ranking.sort(
+                function(a, b) {
+
+                    if (
+                        b.valor !== a.valor
+                    ) {
+
+                        return (
+                            b.valor -
+                            a.valor
+                        );
+
+                    }
+
+                    return a.nome.localeCompare(
+                        b.nome,
+                        "pt-BR"
+                    );
+
+                }
+            );
+
+
+            return ranking;
 
         }
 
@@ -3209,31 +3165,20 @@ document.addEventListener(
             let total =
                 0;
 
-
             let quantidadeMunicipios =
                 0;
 
 
-            let maiorValor =
-                0;
-
-
-            let maiorCodigo =
-                null;
-
-
             valoresMunicipios.forEach(
-                function(valor, codigo) {
+                function(valor) {
 
                     const numero =
                         Number(
                             valor || 0
                         );
 
-
                     total +=
                         numero;
-
 
                     if (
                         numero > 0
@@ -3242,63 +3187,16 @@ document.addEventListener(
                         quantidadeMunicipios +=
                             1;
 
-
-                        if (
-                            numero >
-                            maiorValor
-                        ) {
-
-                            maiorValor =
-                                numero;
-
-
-                            maiorCodigo =
-                                String(
-                                    codigo
-                                );
-
-                        }
-
                     }
 
                 }
             );
 
 
-            let maiorMunicipio =
-                "—";
-
-
-            if (
-                maiorCodigo !== null
-            ) {
-
-                const encontrado =
-                    municipiosBusca.find(
-                        function(municipio) {
-
-                            return (
-                                String(
-                                    municipio.CD_MUN
-                                )
-                                ===
-                                maiorCodigo
-                            );
-
-                        }
-                    );
-
-
-                if (
-                    encontrado
-                ) {
-
-                    maiorMunicipio =
-                        encontrado.NM_MUN;
-
-                }
-
-            }
+            const ranking =
+                gerarRanking(
+                    valoresMunicipios
+                );
 
 
             indicadorTotal.textContent =
@@ -3314,21 +3212,37 @@ document.addEventListener(
                 );
 
 
-            indicadorMaiorValor.textContent =
-                moeda(
-                    maiorValor
-                );
+            if (
+                ranking.length > 0
+            ) {
 
+                indicadorMaiorValor.textContent =
+                    moeda(
+                        ranking[0].valor
+                    );
 
-            indicadorMaiorMunicipio.textContent =
-                maiorMunicipio;
+                indicadorMaiorMunicipio.textContent =
+                    ranking[0].nome;
+
+            }
+
+            else {
+
+                indicadorMaiorValor.textContent =
+                    moeda(
+                        0
+                    );
+
+                indicadorMaiorMunicipio.textContent =
+                    "—";
+
+            }
 
         }
 
 
         /* ==================================================
-           ETAPA 7
-           ATUALIZAR RANKING MUNICIPAL
+           RANKING VISUAL
            ================================================== */
 
         function atualizarRanking(
@@ -3338,103 +3252,15 @@ document.addEventListener(
             listaRanking.innerHTML =
                 "";
 
+            rankingConsultaAtual =
+                gerarRanking(
+                    valoresMunicipios
+                );
 
-            const ranking =
-                [];
-
-
-            /* ----------------------------------------------
-               Transformar Map em lista
-               ---------------------------------------------- */
-
-            valoresMunicipios.forEach(
-                function(valor, codigo) {
-
-                    const numero =
-                        Number(
-                            valor || 0
-                        );
-
-
-                    if (
-                        numero <= 0
-                    ) {
-
-                        return;
-
-                    }
-
-
-                    const municipio =
-                        municipiosBusca.find(
-                            function(item) {
-
-                                return (
-                                    String(
-                                        item.CD_MUN
-                                    )
-                                    ===
-                                    String(
-                                        codigo
-                                    )
-                                );
-
-                            }
-                        );
-
-
-                    if (
-                        !municipio
-                    ) {
-
-                        return;
-
-                    }
-
-
-                    ranking.push(
-                        {
-
-                            codigo:
-                                String(
-                                    codigo
-                                ),
-
-                            nome:
-                                municipio.NM_MUN,
-
-                            valor:
-                                numero
-
-                        }
-                    );
-
-                }
-            );
-
-
-            /* ----------------------------------------------
-               Ordenar do maior para o menor
-               ---------------------------------------------- */
-
-            ranking.sort(
-                function(a, b) {
-
-                    return (
-                        b.valor -
-                        a.valor
-                    );
-
-                }
-            );
-
-
-            /* ----------------------------------------------
-               Sem arrecadação
-               ---------------------------------------------- */
 
             if (
-                ranking.length === 0
+                rankingConsultaAtual.length ===
+                0
             ) {
 
                 const vazio =
@@ -3442,31 +3268,23 @@ document.addEventListener(
                         "div"
                     );
 
-
                 vazio.className =
                     "ranking-vazio";
-
 
                 vazio.textContent =
                     "Nenhum município com arrecadação "
                     + "para esta consulta.";
 
-
                 listaRanking.appendChild(
                     vazio
                 );
-
 
                 return;
 
             }
 
 
-            /* ----------------------------------------------
-               Top 10
-               ---------------------------------------------- */
-
-            ranking
+            rankingConsultaAtual
             .slice(
                 0,
                 10
@@ -3479,10 +3297,11 @@ document.addEventListener(
                             "div"
                         );
 
-
                     linha.className =
                         "item-ranking";
 
+                    linha.dataset.codigo =
+                        item.codigo;
 
                     linha.title =
                         "Clique para localizar "
@@ -3490,49 +3309,37 @@ document.addEventListener(
                         + " no mapa";
 
 
-                    /* POSIÇÃO */
-
                     const posicao =
                         document.createElement(
                             "div"
                         );
 
-
                     posicao.className =
                         "ranking-posicao";
-
 
                     posicao.textContent =
                         (indice + 1) + "º";
 
-
-                    /* MUNICÍPIO */
 
                     const municipio =
                         document.createElement(
                             "div"
                         );
 
-
                     municipio.className =
                         "ranking-municipio";
-
 
                     municipio.textContent =
                         item.nome;
 
-
-                    /* VALOR */
 
                     const valor =
                         document.createElement(
                             "div"
                         );
 
-
                     valor.className =
                         "ranking-valor";
-
 
                     valor.textContent =
                         moedaCompacta(
@@ -3540,15 +3347,14 @@ document.addEventListener(
                         );
 
 
-                    /* CLIQUE */
-
                     linha.addEventListener(
                         "click",
                         function() {
 
                             selecionarMunicipio(
                                 item.codigo,
-                                item.nome
+                                item.nome,
+                                true
                             );
 
                         }
@@ -3559,22 +3365,542 @@ document.addEventListener(
                         posicao
                     );
 
-
                     linha.appendChild(
                         municipio
                     );
 
-
                     linha.appendChild(
                         valor
                     );
-
 
                     listaRanking.appendChild(
                         linha
                     );
 
                 }
+            );
+
+
+            destacarMunicipioRanking();
+
+        }
+
+
+        /* ==================================================
+           DESTACAR NO RANKING
+           ================================================== */
+
+        function destacarMunicipioRanking() {
+
+            document
+            .querySelectorAll(
+                ".item-ranking"
+            )
+            .forEach(
+                function(item) {
+
+                    item.classList.remove(
+                        "selecionado"
+                    );
+
+                    if (
+                        codigoMunicipioSelecionado
+                        &&
+                        String(
+                            item.dataset.codigo
+                        )
+                        ===
+                        String(
+                            codigoMunicipioSelecionado
+                        )
+                    ) {
+
+                        item.classList.add(
+                            "selecionado"
+                        );
+
+                    }
+
+                }
+            );
+
+        }
+
+
+        /* ==================================================
+           ETAPA 8
+           SÉRIE HISTÓRICA MUNICIPAL
+           ================================================== */
+
+        function obterSerieMunicipal(
+            codigo
+        ) {
+
+            codigo =
+                String(
+                    codigo
+                );
+
+            const serie =
+                new Map();
+
+
+            anos.forEach(
+                function(ano) {
+
+                    serie.set(
+                        Number(
+                            ano
+                        ),
+                        0
+                    );
+
+                }
+            );
+
+
+            if (
+                substanciaSelecionada ===
+                "TODAS"
+            ) {
+
+                dadosCFEM.totais.forEach(
+                    function(item) {
+
+                        if (
+                            String(
+                                item.CodigoMunicipio
+                            )
+                            ===
+                            codigo
+                        ) {
+
+                            serie.set(
+                                Number(
+                                    item.Ano
+                                ),
+
+                                Number(
+                                    item.CFEM_Total
+                                )
+                            );
+
+                        }
+
+                    }
+                );
+
+            }
+
+            else {
+
+                dadosCFEM.substancias.forEach(
+                    function(item) {
+
+                        if (
+                            String(
+                                item.CodigoMunicipio
+                            )
+                            ===
+                            codigo
+                            &&
+                            item["Substância"] ===
+                            substanciaSelecionada
+                        ) {
+
+                            serie.set(
+                                Number(
+                                    item.Ano
+                                ),
+
+                                Number(
+                                    item.CFEM_Total
+                                )
+                            );
+
+                        }
+
+                    }
+                );
+
+            }
+
+
+            return serie;
+
+        }
+
+
+        /* ==================================================
+           DESENHAR SÉRIE
+           ================================================== */
+
+        function desenharSerieHistorica(
+            serie
+        ) {
+
+            serieBarras.innerHTML =
+                "";
+
+
+            const anoSelecionado =
+                Number(
+                    filtroAno.value
+                );
+
+
+            let maiorValor =
+                0;
+
+
+            serie.forEach(
+                function(valor) {
+
+                    if (
+                        Number(valor) >
+                        maiorValor
+                    ) {
+
+                        maiorValor =
+                            Number(valor);
+
+                    }
+
+                }
+            );
+
+
+            const anosOrdenados =
+                anos
+                .slice()
+                .sort(
+                    function(a, b) {
+                        return a - b;
+                    }
+                );
+
+
+            anosOrdenados.forEach(
+                function(ano) {
+
+                    const valor =
+                        Number(
+                            serie.get(
+                                Number(
+                                    ano
+                                )
+                            ) || 0
+                        );
+
+
+                    let largura =
+                        0;
+
+
+                    if (
+                        maiorValor > 0
+                    ) {
+
+                        largura =
+                            (
+                                valor /
+                                maiorValor
+                            ) * 100;
+
+                    }
+
+
+                    const linha =
+                        document.createElement(
+                            "div"
+                        );
+
+                    linha.className =
+                        "serie-linha";
+
+
+                    if (
+                        Number(ano) ===
+                        anoSelecionado
+                    ) {
+
+                        linha.classList.add(
+                            "ativa"
+                        );
+
+                    }
+
+
+                    const anoElemento =
+                        document.createElement(
+                            "div"
+                        );
+
+                    anoElemento.className =
+                        "serie-ano";
+
+
+                    if (
+                        Number(ano) ===
+                        anoSelecionado
+                    ) {
+
+                        anoElemento.classList.add(
+                            "ativo"
+                        );
+
+                    }
+
+
+                    let textoAno =
+                        String(
+                            ano
+                        );
+
+
+                    if (
+                        Number(ano) ===
+                        Number(anoPadrao)
+                    ) {
+
+                        textoAno +=
+                            "*";
+
+                    }
+
+
+                    anoElemento.textContent =
+                        textoAno;
+
+
+                    const fundo =
+                        document.createElement(
+                            "div"
+                        );
+
+                    fundo.className =
+                        "serie-barra-fundo";
+
+
+                    const barra =
+                        document.createElement(
+                            "div"
+                        );
+
+                    barra.className =
+                        "serie-barra";
+
+                    barra.style.width =
+                        largura + "%";
+
+
+                    fundo.appendChild(
+                        barra
+                    );
+
+
+                    const valorElemento =
+                        document.createElement(
+                            "div"
+                        );
+
+                    valorElemento.className =
+                        "serie-valor";
+
+                    valorElemento.textContent =
+                        moedaCompacta(
+                            valor
+                        );
+
+
+                    linha.appendChild(
+                        anoElemento
+                    );
+
+                    linha.appendChild(
+                        fundo
+                    );
+
+                    linha.appendChild(
+                        valorElemento
+                    );
+
+
+                    serieBarras.appendChild(
+                        linha
+                    );
+
+                }
+            );
+
+
+            serieNota.textContent =
+                "* "
+                + anoPadrao
+                + ": valor acumulado disponível "
+                + "na base da ANM no momento da atualização.";
+
+        }
+
+
+        /* ==================================================
+           ETAPA 8
+           PAINEL DO MUNICÍPIO
+           ================================================== */
+
+        function atualizarPainelMunicipio() {
+
+            if (
+                !codigoMunicipioSelecionado
+            ) {
+
+                painelMunicipio.style.display =
+                    "none";
+
+                return;
+
+            }
+
+
+            painelMunicipio.style.display =
+                "block";
+
+
+            const ano =
+                Number(
+                    filtroAno.value
+                );
+
+
+            const valorMunicipio =
+                Number(
+                    valoresConsultaAtual.get(
+                        String(
+                            codigoMunicipioSelecionado
+                        )
+                    ) || 0
+                );
+
+
+            let totalMG =
+                0;
+
+
+            valoresConsultaAtual.forEach(
+                function(valor) {
+
+                    totalMG +=
+                        Number(
+                            valor || 0
+                        );
+
+                }
+            );
+
+
+            let participacao =
+                0;
+
+
+            if (
+                totalMG > 0
+            ) {
+
+                participacao =
+                    (
+                        valorMunicipio /
+                        totalMG
+                    ) * 100;
+
+            }
+
+
+            const indiceRanking =
+                rankingConsultaAtual
+                .findIndex(
+                    function(item) {
+
+                        return (
+                            String(
+                                item.codigo
+                            )
+                            ===
+                            String(
+                                codigoMunicipioSelecionado
+                            )
+                        );
+
+                    }
+                );
+
+
+            municipioNome.textContent =
+                nomeMunicipioSelecionado ||
+                "—";
+
+
+            municipioValorRotulo.textContent =
+                "CFEM — " +
+                ano;
+
+
+            municipioValor.textContent =
+                moeda(
+                    valorMunicipio
+                );
+
+
+            municipioParticipacao.textContent =
+                percentual(
+                    participacao
+                );
+
+
+            if (
+                indiceRanking >= 0
+            ) {
+
+                municipioPosicao.textContent =
+                    (
+                        indiceRanking + 1
+                    ) + "º";
+
+            }
+
+            else {
+
+                municipioPosicao.textContent =
+                    "Sem arrecadação";
+
+            }
+
+
+            if (
+                substanciaSelecionada ===
+                "TODAS"
+            ) {
+
+                serieSubstancia.textContent =
+                    "Todas as substâncias";
+
+            }
+
+            else {
+
+                serieSubstancia.textContent =
+                    substanciaSelecionada;
+
+            }
+
+
+            const serie =
+                obterSerieMunicipal(
+                    codigoMunicipioSelecionado
+                );
+
+
+            desenharSerieHistorica(
+                serie
             );
 
         }
@@ -3589,15 +3915,12 @@ document.addEventListener(
             if (
                 !dadosCFEM
             ) {
-
                 return;
-
             }
 
 
             carregando.textContent =
                 "Atualizando mapa...";
-
 
             carregando.style.display =
                 "block";
@@ -3609,88 +3932,20 @@ document.addEventListener(
                 );
 
 
-            const valoresMunicipios =
-                new Map();
-
-
-            /* ----------------------------------------------
-               TODAS AS SUBSTÂNCIAS
-               ---------------------------------------------- */
-
-            if (
-                substanciaSelecionada ===
-                "TODAS"
-            ) {
-
-                dadosCFEM.totais
-                .forEach(
-                    function(item) {
-
-                        if (
-                            Number(
-                                item.Ano
-                            ) ===
-                            ano
-                        ) {
-
-                            valoresMunicipios.set(
-                                String(
-                                    item.CodigoMunicipio
-                                ),
-
-                                Number(
-                                    item.CFEM_Total
-                                )
-                            );
-
-                        }
-
-                    }
+            valoresConsultaAtual =
+                obterValoresConsulta(
+                    ano
                 );
 
-            }
 
-
-            /* ----------------------------------------------
-               SUBSTÂNCIA ESPECÍFICA
-               ---------------------------------------------- */
-
-            else {
-
-                dadosCFEM.substancias
-                .forEach(
-                    function(item) {
-
-                        if (
-                            Number(
-                                item.Ano
-                            ) ===
-                            ano
-                            &&
-                            item["Substância"] ===
-                            substanciaSelecionada
-                        ) {
-
-                            valoresMunicipios.set(
-                                String(
-                                    item.CodigoMunicipio
-                                ),
-
-                                Number(
-                                    item.CFEM_Total
-                                )
-                            );
-
-                        }
-
-                    }
+            rankingConsultaAtual =
+                gerarRanking(
+                    valoresConsultaAtual
                 );
 
-            }
-
 
             /* ----------------------------------------------
-               POLÍGONOS
+               ATUALIZAR MUNICÍPIOS
                ---------------------------------------------- */
 
             camadaMunicipios.eachLayer(
@@ -3700,9 +3955,7 @@ document.addEventListener(
                         !layer.feature ||
                         !layer.feature.properties
                     ) {
-
                         return;
-
                     }
 
 
@@ -3717,14 +3970,13 @@ document.addEventListener(
 
 
                     const valor =
-                        valoresMunicipios.get(
+                        valoresConsultaAtual.get(
                             codigo
                         ) || 0;
 
 
                     props.CFEM_Total =
                         valor;
-
 
                     props.Ano =
                         ano;
@@ -3773,6 +4025,12 @@ document.addEventListener(
                             valor
                         ) +
 
+                        '<br>' +
+
+                        '<span style="color:#666;">' +
+                        'Clique para consultar o município' +
+                        '</span>' +
+
                         '</div>';
 
 
@@ -3791,10 +4049,8 @@ document.addEventListener(
                         layer.bindTooltip(
                             conteudo,
                             {
-
                                 sticky:
                                     true
-
                             }
                         );
 
@@ -3809,24 +4065,41 @@ document.addEventListener(
                ---------------------------------------------- */
 
             atualizarIndicadores(
-                valoresMunicipios
+                valoresConsultaAtual
             );
 
 
             /* ----------------------------------------------
-               ETAPA 7 - RANKING
+               RANKING
                ---------------------------------------------- */
 
             atualizarRanking(
-                valoresMunicipios
+                valoresConsultaAtual
             );
 
 
             /* ----------------------------------------------
-               MANTER MUNICÍPIO DESTACADO
+               MUNICÍPIO SELECIONADO
                ---------------------------------------------- */
 
-            aplicarDestaqueMunicipio();
+            if (
+                codigoMunicipioSelecionado
+            ) {
+
+                camadaMunicipioSelecionado =
+                    layerPorCodigo.get(
+                        String(
+                            codigoMunicipioSelecionado
+                        )
+                    ) || null;
+
+
+                aplicarDestaqueMunicipio();
+
+
+                atualizarPainelMunicipio();
+
+            }
 
 
             /* ----------------------------------------------
@@ -3862,7 +4135,7 @@ document.addEventListener(
 
 
         /* ==================================================
-           ALTERAR ANO
+           TROCAR ANO
            ================================================== */
 
         filtroAno.addEventListener(
@@ -3969,7 +4242,7 @@ mapa_cfem.fit_bounds(
 
 
 # ============================================================
-# 31. SALVAR MAPA
+# 31. SALVAR
 # ============================================================
 
 print(
@@ -3992,13 +4265,16 @@ data_execucao = (
     )
 )
 
-
 print(
     "\n" + "=" * 60
 )
 
 print(
     "WEBGIS ATUALIZADO COM SUCESSO"
+)
+
+print(
+    "ETAPA 8"
 )
 
 print(
