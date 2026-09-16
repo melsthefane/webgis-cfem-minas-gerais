@@ -2,6 +2,7 @@ import pandas as pd
 import geopandas as gpd
 import folium
 import requests
+import json
 
 from io import BytesIO
 from datetime import datetime
@@ -20,6 +21,9 @@ URL_CFEM = (
 
 ARQUIVO_MUNICIPIOS = "municipios_mg.geojson"
 ARQUIVO_SAIDA = "index.html"
+
+# Novo arquivo que será utilizado pela interface dinâmica
+ARQUIVO_DADOS = "dados_cfem.json"
 
 
 print("=" * 60)
@@ -87,8 +91,12 @@ print(
 
 
 # ============================================================
-# 4. CONVERTER VALOR RECOLHIDO
+# 4. PADRONIZAR DADOS
 # ============================================================
+
+# ------------------------------------------------------------
+# 4.1 Valor recolhido
+# ------------------------------------------------------------
 
 cfem_mg["ValorRecolhido"] = (
     cfem_mg["ValorRecolhido"]
@@ -103,14 +111,69 @@ cfem_mg["ValorRecolhido"] = pd.to_numeric(
 ).fillna(0)
 
 
+# ------------------------------------------------------------
+# 4.2 Código do município
+# ------------------------------------------------------------
+
+cfem_mg["CodigoMunicipio"] = (
+    cfem_mg["CodigoMunicipio"]
+    .astype(str)
+    .str.replace(r"\.0$", "", regex=True)
+    .str.strip()
+    .str.zfill(7)
+)
+
+
+# ------------------------------------------------------------
+# 4.3 Ano
+# ------------------------------------------------------------
+
+cfem_mg["Ano"] = pd.to_numeric(
+    cfem_mg["Ano"],
+    errors="coerce"
+)
+
+
+# ------------------------------------------------------------
+# 4.4 Nome do município
+# ------------------------------------------------------------
+
+cfem_mg["Município"] = (
+    cfem_mg["Município"]
+    .fillna("")
+    .astype(str)
+    .str.strip()
+)
+
+
+# ------------------------------------------------------------
+# 4.5 Substância mineral
+# ------------------------------------------------------------
+
+cfem_mg["Substância"] = (
+    cfem_mg["Substância"]
+    .fillna("Não informada")
+    .astype(str)
+    .str.strip()
+)
+
+cfem_mg.loc[
+    cfem_mg["Substância"] == "",
+    "Substância"
+] = "Não informada"
+
+
 # ============================================================
-# 5. SOMAR CFEM POR MUNICÍPIO E ANO
+# 5. CFEM TOTAL POR MUNICÍPIO E ANO
 # ============================================================
 
 cfem_total = (
     cfem_mg
     .groupby(
-        ["Ano", "CodigoMunicipio"],
+        [
+            "Ano",
+            "CodigoMunicipio"
+        ],
         as_index=False
     )["ValorRecolhido"]
     .sum()
@@ -121,8 +184,6 @@ cfem_total = (
     )
 )
 
-
-# Padronizar código IBGE
 
 cfem_total["CodigoMunicipio"] = (
     cfem_total["CodigoMunicipio"]
@@ -135,8 +196,6 @@ cfem_total["CodigoMunicipio"] = (
     .str.zfill(7)
 )
 
-
-# Padronizar ano
 
 cfem_total["Ano"] = pd.to_numeric(
     cfem_total["Ano"],
@@ -157,10 +216,284 @@ print(anos)
 
 
 # ============================================================
-# 6. CARREGAR MUNICÍPIOS DE MINAS GERAIS
+# 6. PREPARAR DADOS POR SUBSTÂNCIA
 # ============================================================
 
-print("\nCarregando municípios...")
+print(
+    "\nPreparando dados por município, ano e substância..."
+)
+
+
+cfem_substancias = (
+    cfem_mg
+    .groupby(
+        [
+            "Ano",
+            "CodigoMunicipio",
+            "Município",
+            "Substância"
+        ],
+        as_index=False
+    )["ValorRecolhido"]
+    .sum()
+    .rename(
+        columns={
+            "ValorRecolhido": "CFEM_Total"
+        }
+    )
+)
+
+
+# Remover registros sem ano válido
+
+cfem_substancias = (
+    cfem_substancias[
+        cfem_substancias["Ano"].notna()
+    ]
+    .copy()
+)
+
+
+cfem_substancias["Ano"] = (
+    cfem_substancias["Ano"]
+    .astype(int)
+)
+
+
+cfem_substancias["CodigoMunicipio"] = (
+    cfem_substancias["CodigoMunicipio"]
+    .astype(str)
+    .str.replace(
+        r"\.0$",
+        "",
+        regex=True
+    )
+    .str.zfill(7)
+)
+
+
+cfem_substancias["CFEM_Total"] = (
+    cfem_substancias["CFEM_Total"]
+    .astype(float)
+)
+
+
+print(
+    f"Registros agregados por substância: "
+    f"{len(cfem_substancias):,}"
+)
+
+
+# ============================================================
+# 7. IDENTIFICAR PRINCIPAIS SUBSTÂNCIAS
+# ============================================================
+
+print(
+    "\nIdentificando principais substâncias..."
+)
+
+
+ranking_substancias = (
+    cfem_substancias
+    .groupby(
+        "Substância",
+        as_index=False
+    )["CFEM_Total"]
+    .sum()
+    .sort_values(
+        "CFEM_Total",
+        ascending=False
+    )
+)
+
+
+# Quantidade de substâncias principais exibidas no futuro menu.
+# Podemos alterar esse número depois, se necessário.
+
+QUANTIDADE_PRINCIPAIS_SUBSTANCIAS = 10
+
+
+principais_substancias = (
+    ranking_substancias
+    .head(
+        QUANTIDADE_PRINCIPAIS_SUBSTANCIAS
+    )["Substância"]
+    .tolist()
+)
+
+
+print(
+    "\nPrincipais substâncias encontradas:"
+)
+
+for posicao, substancia in enumerate(
+    principais_substancias,
+    start=1
+):
+    print(
+        f"{posicao}. {substancia}"
+    )
+
+
+# ============================================================
+# 8. GERAR dados_cfem.json
+# ============================================================
+
+print(
+    f"\nGerando {ARQUIVO_DADOS}..."
+)
+
+
+# ------------------------------------------------------------
+# 8.1 Dados totais por município e ano
+# ------------------------------------------------------------
+
+dados_totais_json = (
+    cfem_mg
+    .groupby(
+        [
+            "Ano",
+            "CodigoMunicipio",
+            "Município"
+        ],
+        as_index=False
+    )["ValorRecolhido"]
+    .sum()
+    .rename(
+        columns={
+            "ValorRecolhido": "CFEM_Total"
+        }
+    )
+)
+
+
+dados_totais_json = (
+    dados_totais_json[
+        dados_totais_json["Ano"].notna()
+    ]
+    .copy()
+)
+
+
+dados_totais_json["Ano"] = (
+    dados_totais_json["Ano"]
+    .astype(int)
+)
+
+
+dados_totais_json["CodigoMunicipio"] = (
+    dados_totais_json["CodigoMunicipio"]
+    .astype(str)
+    .str.replace(
+        r"\.0$",
+        "",
+        regex=True
+    )
+    .str.zfill(7)
+)
+
+
+dados_totais_json["CFEM_Total"] = (
+    dados_totais_json["CFEM_Total"]
+    .astype(float)
+)
+
+
+# ------------------------------------------------------------
+# 8.2 Montar estrutura JSON
+# ------------------------------------------------------------
+
+dados_webgis = {
+
+    "metadata": {
+
+        "titulo":
+            "Mapa de Arrecadação da CFEM — Minas Gerais",
+
+        "descricao":
+            "Compensação Financeira pela Exploração "
+            "de Recursos Minerais",
+
+        "autoria":
+            "Melissa Carvalho",
+
+        "fonte_cfem":
+            "Agência Nacional de Mineração — ANM",
+
+        "fonte_malha":
+            "Instituto Brasileiro de Geografia "
+            "e Estatística — IBGE",
+
+        "anos":
+            [int(ano) for ano in anos],
+
+        "principais_substancias":
+            principais_substancias,
+
+        "quantidade_principais_substancias":
+            QUANTIDADE_PRINCIPAIS_SUBSTANCIAS,
+
+        "gerado_em":
+            datetime.now().strftime(
+                "%d/%m/%Y %H:%M"
+            )
+    },
+
+
+    # Dados usados quando o usuário selecionar
+    # "Todas as substâncias"
+
+    "totais": (
+        dados_totais_json
+        .to_dict(
+            orient="records"
+        )
+    ),
+
+
+    # Dados utilizados quando uma substância
+    # específica for selecionada
+
+    "substancias": (
+        cfem_substancias
+        .to_dict(
+            orient="records"
+        )
+    )
+}
+
+
+# ------------------------------------------------------------
+# 8.3 Salvar JSON
+# ------------------------------------------------------------
+
+with open(
+    ARQUIVO_DADOS,
+    "w",
+    encoding="utf-8"
+) as arquivo_json:
+
+    json.dump(
+        dados_webgis,
+        arquivo_json,
+        ensure_ascii=False,
+        separators=(",", ":")
+    )
+
+
+print(
+    f"{ARQUIVO_DADOS} gerado com sucesso."
+)
+
+
+# ============================================================
+# 9. CARREGAR MUNICÍPIOS DE MINAS GERAIS
+# ============================================================
+
+print(
+    "\nCarregando municípios..."
+)
+
 
 municipios = gpd.read_file(
     ARQUIVO_MUNICIPIOS
@@ -195,7 +528,7 @@ print(
 
 
 # ============================================================
-# 7. FUNÇÃO DE CORES
+# 10. FUNÇÃO DE CORES
 # ============================================================
 
 def cor_cfem(valor):
@@ -223,63 +556,88 @@ def cor_cfem(valor):
 
 
 # ============================================================
-# 8. CRIAR MAPA
+# 11. CRIAR MAPA
 # ============================================================
 
-print("\nCriando mapa...")
+print(
+    "\nCriando mapa..."
+)
+
 
 mapa_cfem = folium.Map(
+
     location=[
         -18.5,
         -44.5
     ],
+
     zoom_start=6,
+
     tiles=None,
+
     control_scale=True
 )
 
 
 # ============================================================
-# 9. MAPAS BASE
+# 12. MAPAS BASE
 # ============================================================
 
 # CyclOSM
 
 folium.TileLayer(
+
     tiles=(
         "https://{s}.tile-cyclosm.openstreetmap.fr/"
         "cyclosm/{z}/{x}/{y}.png"
     ),
+
     name="CyclOSM",
+
     attr=(
         "CyclOSM | "
         "© OpenStreetMap contributors"
     ),
+
     overlay=False,
+
     control=True,
+
     show=True
-).add_to(mapa_cfem)
+
+).add_to(
+    mapa_cfem
+)
 
 
 # Esri World Topo
 
 folium.TileLayer(
+
     tiles=(
         "https://server.arcgisonline.com/"
         "ArcGIS/rest/services/"
         "World_Topo_Map/MapServer/"
         "tile/{z}/{y}/{x}"
     ),
+
     name="Esri World Topo",
+
     attr="Tiles © Esri",
+
     overlay=False,
+
     control=True,
+
     show=False
-).add_to(mapa_cfem)
+
+).add_to(
+    mapa_cfem
+)
 
 
 # ============================================================
-# 10. TÍTULO DO MAPA
+# 13. TÍTULO DO MAPA
 # ============================================================
 
 titulo_html = """
@@ -335,7 +693,7 @@ mapa_cfem.get_root().html.add_child(
 
 
 # ============================================================
-# 11. CRIAR CAMADAS DE CFEM POR ANO
+# 14. CRIAR CAMADAS DE CFEM POR ANO
 # ============================================================
 
 for ano in anos:
@@ -345,14 +703,10 @@ for ano in anos:
     )
 
 
-    # Dados do ano
-
     dados_ano = cfem_total[
         cfem_total["Ano"] == ano
     ].copy()
 
-
-    # Juntar CFEM com municípios
 
     geo_ano = municipios.merge(
 
@@ -371,8 +725,6 @@ for ano in anos:
     )
 
 
-    # Municípios sem arrecadação = zero
-
     geo_ano["CFEM_Total"] = (
         geo_ano["CFEM_Total"]
         .fillna(0)
@@ -386,7 +738,7 @@ for ano in anos:
 
 
     # --------------------------------------------------------
-    # FORMATAÇÃO MONETÁRIA BRASILEIRA
+    # Formatação monetária brasileira
     # --------------------------------------------------------
 
     geo_ano["CFEM_R$"] = (
@@ -402,7 +754,7 @@ for ano in anos:
 
 
     # --------------------------------------------------------
-    # CAMADA DO ANO
+    # Camada do ano
     # --------------------------------------------------------
 
     camada = folium.FeatureGroup(
@@ -416,7 +768,7 @@ for ano in anos:
 
 
     # --------------------------------------------------------
-    # ESTILO
+    # Estilo
     # --------------------------------------------------------
 
     def estilo(feature):
@@ -442,7 +794,7 @@ for ano in anos:
 
 
     # --------------------------------------------------------
-    # GEOJSON
+    # GeoJSON
     # --------------------------------------------------------
 
     folium.GeoJson(
@@ -497,7 +849,7 @@ for ano in anos:
 
 
 # ============================================================
-# 12. LEGENDA + CRÉDITOS
+# 15. LEGENDA + CRÉDITOS
 # ============================================================
 
 template_legenda = """
@@ -529,8 +881,6 @@ template_legenda = """
 ">
 
 
-<!-- TÍTULO DA LEGENDA -->
-
 <div style="
     font-size: 15px;
     font-weight: bold;
@@ -539,8 +889,6 @@ template_legenda = """
     CFEM arrecadada
 </div>
 
-
-<!-- SEM ARRECADAÇÃO -->
 
 <div style="margin-bottom:3px;">
 
@@ -558,8 +906,6 @@ template_legenda = """
 </div>
 
 
-<!-- ATÉ R$ 10 MIL -->
-
 <div style="margin-bottom:3px;">
 
 <span style="
@@ -575,8 +921,6 @@ template_legenda = """
 
 </div>
 
-
-<!-- R$ 10 MIL A R$ 100 MIL -->
 
 <div style="margin-bottom:3px;">
 
@@ -594,8 +938,6 @@ template_legenda = """
 </div>
 
 
-<!-- R$ 100 MIL A R$ 1 MILHÃO -->
-
 <div style="margin-bottom:3px;">
 
 <span style="
@@ -611,8 +953,6 @@ template_legenda = """
 
 </div>
 
-
-<!-- R$ 1 MI A R$ 10 MI -->
 
 <div style="margin-bottom:3px;">
 
@@ -630,8 +970,6 @@ template_legenda = """
 </div>
 
 
-<!-- R$ 10 MI A R$ 100 MI -->
-
 <div style="margin-bottom:3px;">
 
 <span style="
@@ -647,8 +985,6 @@ template_legenda = """
 
 </div>
 
-
-<!-- ACIMA DE R$ 100 MI -->
 
 <div>
 
@@ -718,7 +1054,7 @@ mapa_cfem.get_root().add_child(
 
 
 # ============================================================
-# 13. CONTROLE DE CAMADAS
+# 16. CONTROLE DE CAMADAS
 # ============================================================
 
 folium.LayerControl(
@@ -729,7 +1065,7 @@ folium.LayerControl(
 
 
 # ============================================================
-# 14. ENQUADRAR MINAS GERAIS
+# 17. ENQUADRAR MINAS GERAIS
 # ============================================================
 
 minx, miny, maxx, maxy = (
@@ -752,7 +1088,7 @@ mapa_cfem.fit_bounds(
 
 
 # ============================================================
-# 15. SALVAR INDEX.HTML
+# 18. SALVAR INDEX.HTML
 # ============================================================
 
 print(
@@ -765,7 +1101,7 @@ mapa_cfem.save(
 
 
 # ============================================================
-# 16. FINALIZAÇÃO
+# 19. FINALIZAÇÃO
 # ============================================================
 
 data_execucao = (
@@ -785,7 +1121,11 @@ print(
 )
 
 print(
-    f"Arquivo: {ARQUIVO_SAIDA}"
+    f"Mapa: {ARQUIVO_SAIDA}"
+)
+
+print(
+    f"Dados: {ARQUIVO_DADOS}"
 )
 
 print(
@@ -794,6 +1134,11 @@ print(
 
 print(
     f"Anos: {anos}"
+)
+
+print(
+    f"Principais substâncias: "
+    f"{principais_substancias}"
 )
 
 print(
