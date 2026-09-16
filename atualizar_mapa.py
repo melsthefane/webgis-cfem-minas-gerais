@@ -691,6 +691,368 @@ mapa_cfem.get_root().html.add_child(
     )
 )
 
+# ============================================================
+# 13.1 PAINEL DE FILTROS - ANO E SUBSTÂNCIA
+# ============================================================
+
+# Ano mais recente disponível
+ano_padrao = max(anos)
+
+
+# ------------------------------------------------------------
+# Criar opções do seletor de ano
+# ------------------------------------------------------------
+
+opcoes_anos = ""
+
+for ano in sorted(anos, reverse=True):
+
+    selecionado = (
+        "selected"
+        if ano == ano_padrao
+        else ""
+    )
+
+    texto_ano = str(ano)
+
+    # Ano mais recente ainda pode representar dados parciais
+    if ano == ano_padrao:
+        texto_ano = f"{ano}"
+
+    opcoes_anos += (
+        f'<option value="{ano}" {selecionado}>'
+        f'{texto_ano}'
+        f'</option>'
+    )
+
+
+# ------------------------------------------------------------
+# Criar opções do seletor de substâncias
+# ------------------------------------------------------------
+
+opcoes_substancias = (
+    '<option value="TODAS" selected>'
+    'Todas as substâncias'
+    '</option>'
+)
+
+for substancia in principais_substancias:
+
+    # Escapar caracteres que poderiam interferir no HTML
+    substancia_html = (
+        str(substancia)
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+
+    opcoes_substancias += (
+        f'<option value="{substancia_html}">'
+        f'{substancia_html}'
+        f'</option>'
+    )
+
+
+# ------------------------------------------------------------
+# HTML + CSS do painel
+# ------------------------------------------------------------
+
+painel_filtros_html = f"""
+<style>
+
+/* ==========================================================
+   PAINEL DE FILTROS
+   ========================================================== */
+
+#painel-filtros-cfem {{
+
+    position: fixed;
+
+    top: 95px;
+    right: 20px;
+
+    width: 290px;
+
+    z-index: 9998;
+
+    background: rgba(255,255,255,0.96);
+
+    border: 1px solid #999;
+
+    border-radius: 8px;
+
+    padding: 14px;
+
+    box-sizing: border-box;
+
+    box-shadow:
+        0 2px 8px rgba(0,0,0,0.25);
+
+    font-family:
+        Arial,
+        sans-serif;
+}}
+
+
+#painel-filtros-cfem .titulo-painel {{
+
+    font-size: 16px;
+
+    font-weight: bold;
+
+    margin-bottom: 12px;
+
+    color: #333;
+}}
+
+
+#painel-filtros-cfem label {{
+
+    display: block;
+
+    margin-top: 8px;
+
+    margin-bottom: 5px;
+
+    font-size: 12px;
+
+    font-weight: bold;
+
+    color: #444;
+}}
+
+
+#painel-filtros-cfem select {{
+
+    width: 100%;
+
+    padding: 8px 10px;
+
+    border: 1px solid #aaa;
+
+    border-radius: 5px;
+
+    background-color: white;
+
+    font-size: 13px;
+
+    font-family:
+        Arial,
+        sans-serif;
+
+    box-sizing: border-box;
+
+    cursor: pointer;
+}}
+
+
+#painel-filtros-cfem select:focus {{
+
+    outline: 2px solid #777;
+
+    outline-offset: 1px;
+}}
+
+
+#status-filtro-cfem {{
+
+    margin-top: 11px;
+
+    padding-top: 9px;
+
+    border-top: 1px solid #ddd;
+
+    font-size: 11px;
+
+    line-height: 1.4;
+
+    color: #666;
+}}
+
+
+/* ==========================================================
+   RESPONSIVIDADE
+   ========================================================== */
+
+@media screen and (max-width: 768px) {{
+
+    /*
+    Título adaptado para telas menores.
+    */
+
+    #painel-filtros-cfem {{
+
+        top: auto;
+
+        bottom: 15px;
+        left: 10px;
+        right: 10px;
+
+        width: auto;
+
+        max-height: 42vh;
+
+        overflow-y: auto;
+
+        padding: 10px;
+
+        z-index: 10000;
+    }}
+
+
+    #painel-filtros-cfem .titulo-painel {{
+
+        font-size: 14px;
+
+        margin-bottom: 7px;
+    }}
+
+
+    #painel-filtros-cfem label {{
+
+        margin-top: 5px;
+
+        font-size: 11px;
+    }}
+
+
+    #painel-filtros-cfem select {{
+
+        padding: 7px;
+
+        font-size: 12px;
+    }}
+
+
+    #status-filtro-cfem {{
+
+        font-size: 10px;
+
+        margin-top: 7px;
+
+        padding-top: 6px;
+    }}
+
+}}
+
+</style>
+
+
+<div id="painel-filtros-cfem">
+
+    <div class="titulo-painel">
+        Consulta CFEM
+    </div>
+
+
+    <label for="filtro-ano-cfem">
+        Ano
+    </label>
+
+    <select id="filtro-ano-cfem">
+
+        {opcoes_anos}
+
+    </select>
+
+
+    <label for="filtro-substancia-cfem">
+        Substância mineral
+    </label>
+
+    <select id="filtro-substancia-cfem">
+
+        {opcoes_substancias}
+
+    </select>
+
+
+    <div id="status-filtro-cfem">
+
+        Exibindo:
+
+        <b id="status-ano-cfem">
+            {ano_padrao}
+        </b>
+
+        ·
+
+        <b id="status-substancia-cfem">
+            Todas as substâncias
+        </b>
+
+    </div>
+
+</div>
+
+
+<script>
+
+document.addEventListener(
+    "DOMContentLoaded",
+    function() {{
+
+        const filtroAno =
+            document.getElementById(
+                "filtro-ano-cfem"
+            );
+
+        const filtroSubstancia =
+            document.getElementById(
+                "filtro-substancia-cfem"
+            );
+
+        const statusAno =
+            document.getElementById(
+                "status-ano-cfem"
+            );
+
+        const statusSubstancia =
+            document.getElementById(
+                "status-substancia-cfem"
+            );
+
+
+        function atualizarStatusFiltros() {{
+
+            statusAno.textContent =
+                filtroAno.options[
+                    filtroAno.selectedIndex
+                ].text;
+
+
+            statusSubstancia.textContent =
+                filtroSubstancia.options[
+                    filtroSubstancia.selectedIndex
+                ].text;
+
+        }}
+
+
+        filtroAno.addEventListener(
+            "change",
+            atualizarStatusFiltros
+        );
+
+
+        filtroSubstancia.addEventListener(
+            "change",
+            atualizarStatusFiltros
+        );
+
+    }}
+);
+
+</script>
+"""
+
+
+mapa_cfem.get_root().html.add_child(
+    folium.Element(
+        painel_filtros_html
+    )
+)
 
 # ============================================================
 # 14. CRIAR CAMADAS DE CFEM POR ANO
