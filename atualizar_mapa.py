@@ -106,17 +106,13 @@ cfem_mg["ValorRecolhido"] = pd.to_numeric(
 
 
 # ============================================================
-# 5. TRATAR CÓDIGO DO MUNICÍPIO
+# 5. TRATAR CÓDIGO MUNICIPAL
 # ============================================================
 
 cfem_mg["CodigoMunicipio"] = (
     cfem_mg["CodigoMunicipio"]
     .astype(str)
-    .str.replace(
-        r"\.0$",
-        "",
-        regex=True
-    )
+    .str.replace(r"\.0$", "", regex=True)
     .str.strip()
     .str.zfill(7)
 )
@@ -182,7 +178,7 @@ anos = sorted(
 
 if not anos:
     raise ValueError(
-        "Nenhum ano foi encontrado nos dados da ANM."
+        "Nenhum ano foi encontrado na base da ANM."
     )
 
 ano_padrao = max(anos)
@@ -192,11 +188,11 @@ print(anos)
 
 
 # ============================================================
-# 10. CFEM TOTAL POR MUNICÍPIO E ANO
+# 10. TOTAL POR MUNICÍPIO / ANO
 # ============================================================
 
 print(
-    "\nCalculando totais por município e ano..."
+    "\nCalculando CFEM total por município..."
 )
 
 cfem_total = (
@@ -212,8 +208,7 @@ cfem_total = (
     .sum()
     .rename(
         columns={
-            "ValorRecolhido":
-                "CFEM_Total"
+            "ValorRecolhido": "CFEM_Total"
         }
     )
 )
@@ -225,11 +220,11 @@ cfem_total["CFEM_Total"] = (
 
 
 # ============================================================
-# 11. CFEM POR MUNICÍPIO / ANO / SUBSTÂNCIA
+# 11. TOTAL POR MUNICÍPIO / ANO / SUBSTÂNCIA
 # ============================================================
 
 print(
-    "\nCalculando arrecadação por substância..."
+    "\nCalculando CFEM por substância..."
 )
 
 cfem_substancias = (
@@ -246,8 +241,7 @@ cfem_substancias = (
     .sum()
     .rename(
         columns={
-            "ValorRecolhido":
-                "CFEM_Total"
+            "ValorRecolhido": "CFEM_Total"
         }
     )
 )
@@ -268,9 +262,7 @@ print(
 # ============================================================
 
 todas_substancias = sorted(
-    cfem_substancias[
-        "Substância"
-    ]
+    cfem_substancias["Substância"]
     .dropna()
     .astype(str)
     .unique()
@@ -307,16 +299,14 @@ principais_substancias = (
     .tolist()
 )
 
-print(
-    "\nPrincipais substâncias:"
-)
+print("\nPrincipais substâncias:")
 
-for posicao, substancia in enumerate(
+for numero, substancia in enumerate(
     principais_substancias,
     start=1
 ):
     print(
-        f"{posicao}. {substancia}"
+        f"{numero}. {substancia}"
     )
 
 
@@ -341,13 +331,6 @@ dados_webgis = {
 
         "autoria":
             "Melissa Carvalho",
-
-        "fonte_cfem":
-            "Agência Nacional de Mineração — ANM",
-
-        "fonte_malha":
-            "Instituto Brasileiro de Geografia "
-            "e Estatística — IBGE",
 
         "anos":
             [int(x) for x in anos],
@@ -378,18 +361,20 @@ dados_webgis = {
         )
 }
 
+
 with open(
     ARQUIVO_DADOS,
     "w",
     encoding="utf-8"
-) as arquivo_json:
+) as arquivo:
 
     json.dump(
         dados_webgis,
-        arquivo_json,
+        arquivo,
         ensure_ascii=False,
         separators=(",", ":")
     )
+
 
 print(
     f"{ARQUIVO_DADOS} criado com sucesso."
@@ -397,7 +382,7 @@ print(
 
 
 # ============================================================
-# 15. CARREGAR MUNICÍPIOS DE MINAS GERAIS
+# 15. CARREGAR MUNICÍPIOS
 # ============================================================
 
 print(
@@ -438,7 +423,7 @@ print(
 
 
 # ============================================================
-# 16. DADOS DO ANO INICIAL
+# 16. PREPARAR ANO INICIAL
 # ============================================================
 
 dados_iniciais = cfem_total[
@@ -452,6 +437,7 @@ dados_iniciais = cfem_total[
     ]
 ].copy()
 
+
 geo_inicial = municipios.merge(
     dados_iniciais,
     left_on="CD_MUN",
@@ -459,43 +445,48 @@ geo_inicial = municipios.merge(
     how="left"
 )
 
+
 geo_inicial["CFEM_Total"] = (
     geo_inicial["CFEM_Total"]
     .fillna(0)
     .astype(float)
 )
 
-geo_inicial["Ano"] = int(
-    ano_padrao
+
+geo_inicial["Ano"] = (
+    int(ano_padrao)
 )
 
 
 # ============================================================
-# 17. FUNÇÃO DE CORES
+# 17. FUNÇÃO DE COR
 # ============================================================
 
 def cor_cfem(valor):
 
+    valor = float(
+        valor or 0
+    )
+
     if valor <= 0:
         return "#eeeeee"
 
-    elif valor <= 10_000:
+    if valor <= 10_000:
         return "#ffffcc"
 
-    elif valor <= 100_000:
+    if valor <= 100_000:
         return "#ffeda0"
 
-    elif valor <= 1_000_000:
+    if valor <= 1_000_000:
         return "#fed976"
 
-    elif valor <= 10_000_000:
+    if valor <= 10_000_000:
         return "#feb24c"
 
-    elif valor <= 100_000_000:
+    if valor <= 100_000_000:
         return "#f03b20"
 
-    else:
-        return "#bd0026"
+    return "#bd0026"
 
 
 # ============================================================
@@ -507,61 +498,85 @@ print(
 )
 
 mapa_cfem = folium.Map(
+
     location=[
         -18.5,
         -44.5
     ],
+
     zoom_start=6,
+
     tiles=None,
+
     control_scale=True,
+
     prefer_canvas=True
 )
 
 
 # ============================================================
-# 19. MAPAS BASE
+# 19. MAPA BASE - CYCLOSM
 # ============================================================
 
 folium.TileLayer(
+
     tiles=(
         "https://{s}.tile-cyclosm.openstreetmap.fr/"
         "cyclosm/{z}/{x}/{y}.png"
     ),
+
     name="CyclOSM",
+
     attr=(
         "CyclOSM | "
         "© OpenStreetMap contributors"
     ),
+
     overlay=False,
+
     control=True,
+
     show=True
+
 ).add_to(
     mapa_cfem
 )
 
 
+# ============================================================
+# 20. MAPA BASE - ESRI
+# ============================================================
+
 folium.TileLayer(
+
     tiles=(
         "https://server.arcgisonline.com/"
         "ArcGIS/rest/services/"
         "World_Topo_Map/MapServer/"
         "tile/{z}/{y}/{x}"
     ),
+
     name="Esri World Topo",
+
     attr="Tiles © Esri",
+
     overlay=False,
+
     control=True,
+
     show=False
+
 ).add_to(
     mapa_cfem
 )
 
 
 # ============================================================
-# 20. UMA ÚNICA CAMADA MUNICIPAL
+# 21. CAMADA MUNICIPAL ÚNICA
 # ============================================================
 
 camada_municipios = folium.GeoJson(
+
     geo_inicial[
         [
             "CD_MUN",
@@ -604,10 +619,15 @@ camada_municipios = folium.GeoJson(
         "fillOpacity":
             0.92
     }
+
 ).add_to(
     mapa_cfem
 )
 
+
+# ============================================================
+# 22. NOME JAVASCRIPT DA CAMADA
+# ============================================================
 
 nome_camada_js = (
     camada_municipios.get_name()
@@ -615,7 +635,7 @@ nome_camada_js = (
 
 
 # ============================================================
-# 21. TÍTULO
+# 23. TÍTULO
 # ============================================================
 
 titulo_html = """
@@ -632,6 +652,7 @@ titulo_html = """
 </div>
 """
 
+
 mapa_cfem.get_root().html.add_child(
     folium.Element(
         titulo_html
@@ -640,7 +661,7 @@ mapa_cfem.get_root().html.add_child(
 
 
 # ============================================================
-# 22. PREPARAR DADOS PARA JAVASCRIPT
+# 24. DADOS JAVASCRIPT
 # ============================================================
 
 anos_json = json.dumps(
@@ -660,36 +681,37 @@ principais_json = json.dumps(
 
 
 # ============================================================
-# 23. INTERFACE HTML + CSS + JAVASCRIPT
+# 25. INTERFACE
+#
+# IMPORTANTE:
+# NÃO USAMOS f-string AQUI.
+#
+# Isso evita conflito entre:
+# Python f-string
+# CSS { }
+# JavaScript { }
 # ============================================================
 
-interface_html = f"""
+interface_html = """
 <style>
 
 /* ==========================================================
    TÍTULO
    ========================================================== */
 
-#titulo-webgis {{
-
+#titulo-webgis {
     position: fixed;
-
     top: 10px;
     left: 70px;
 
     z-index: 9998;
 
-    background:
-        rgba(255,255,255,0.96);
+    background: rgba(255,255,255,0.96);
 
-    border:
-        1px solid #888;
+    border: 1px solid #888;
+    border-radius: 7px;
 
-    border-radius:
-        7px;
-
-    padding:
-        9px 16px;
+    padding: 9px 16px;
 
     box-shadow:
         0 2px 7px rgba(0,0,0,0.25);
@@ -697,61 +719,41 @@ interface_html = f"""
     font-family:
         Arial,
         sans-serif;
-}}
+}
 
 
-#titulo-webgis .titulo-principal {{
-
-    font-size:
-        19px;
-
-    font-weight:
-        bold;
-
-    white-space:
-        nowrap;
-}}
+#titulo-webgis .titulo-principal {
+    font-size: 19px;
+    font-weight: bold;
+    white-space: nowrap;
+}
 
 
-#titulo-webgis .titulo-secundario {{
-
-    font-size:
-        12px;
-
-    margin-top:
-        4px;
-
-    white-space:
-        nowrap;
-}}
+#titulo-webgis .titulo-secundario {
+    font-size: 12px;
+    margin-top: 4px;
+    white-space: nowrap;
+}
 
 
 /* ==========================================================
-   PAINEL DE CONSULTA
+   PAINEL
    ========================================================== */
 
-#painel-cfem {{
+#painel-cfem {
+    position: fixed;
 
-    position:
-        fixed;
+    top: 105px;
+    right: 20px;
 
-    top:
-        105px;
-
-    right:
-        20px;
-
-    width:
-        310px;
+    width: 310px;
 
     max-height:
         calc(100vh - 135px);
 
-    overflow-y:
-        auto;
+    overflow-y: auto;
 
-    z-index:
-        9999;
+    z-index: 9999;
 
     background:
         rgba(255,255,255,0.97);
@@ -774,21 +776,19 @@ interface_html = f"""
     font-family:
         Arial,
         sans-serif;
-}}
+}
 
 
-#painel-cfem h3 {{
-
+#painel-cfem h3 {
     margin:
         0 0 12px 0;
 
     font-size:
         16px;
-}}
+}
 
 
-.rotulo-cfem {{
-
+.rotulo-cfem {
     display:
         block;
 
@@ -803,15 +803,14 @@ interface_html = f"""
 
     color:
         #444;
-}}
+}
 
 
 /* ==========================================================
    ANO
    ========================================================== */
 
-#filtro-ano {{
-
+#filtro-ano {
     width:
         100%;
 
@@ -832,15 +831,14 @@ interface_html = f"""
 
     font-size:
         13px;
-}}
+}
 
 
 /* ==========================================================
-   BUSCA DE SUBSTÂNCIA
+   BUSCA
    ========================================================== */
 
-#busca-substancia {{
-
+#busca-substancia {
     width:
         100%;
 
@@ -853,29 +851,27 @@ interface_html = f"""
     border-radius:
         5px;
 
+    background:
+        white;
+
     box-sizing:
         border-box;
 
     font-size:
         13px;
-
-    background:
-        white;
-}}
+}
 
 
-#busca-substancia:focus {{
-
+#busca-substancia:focus {
     outline:
         2px solid #777;
 
     outline-offset:
         1px;
-}}
+}
 
 
-#lista-substancias {{
-
+#lista-substancias {
     display:
         none;
 
@@ -899,11 +895,10 @@ interface_html = f"""
 
     box-shadow:
         0 2px 5px rgba(0,0,0,0.15);
-}}
+}
 
 
-.item-substancia {{
-
+.item-substancia {
     padding:
         8px 9px;
 
@@ -915,32 +910,22 @@ interface_html = f"""
 
     border-bottom:
         1px solid #eee;
-}}
+}
 
 
-.item-substancia:last-child {{
-
-    border-bottom:
-        none;
-}}
-
-
-.item-substancia:hover {{
-
+.item-substancia:hover {
     background:
         #eeeeee;
-}}
+}
 
 
-.item-principal {{
-
+.item-principal {
     font-weight:
         bold;
-}}
+}
 
 
-.sem-resultado {{
-
+.sem-resultado {
     padding:
         9px;
 
@@ -949,15 +934,14 @@ interface_html = f"""
 
     color:
         #777;
-}}
+}
 
 
 /* ==========================================================
    STATUS
    ========================================================== */
 
-#status-consulta {{
-
+#status-consulta {
     margin-top:
         12px;
 
@@ -975,11 +959,10 @@ interface_html = f"""
 
     color:
         #555;
-}}
+}
 
 
-#carregando-cfem {{
-
+#carregando-cfem {
     display:
         none;
 
@@ -991,15 +974,14 @@ interface_html = f"""
 
     font-weight:
         bold;
-}}
+}
 
 
 /* ==========================================================
    LEGENDA
    ========================================================== */
 
-#legenda-cfem {{
-
+#legenda-cfem {
     position:
         fixed;
 
@@ -1039,11 +1021,10 @@ interface_html = f"""
 
     font-size:
         12px;
-}}
+}
 
 
-.legenda-titulo {{
-
+.legenda-titulo {
     font-size:
         14px;
 
@@ -1052,18 +1033,16 @@ interface_html = f"""
 
     margin-bottom:
         8px;
-}}
+}
 
 
-.legenda-item {{
-
+.legenda-item {
     margin-bottom:
         4px;
-}}
+}
 
 
-.caixa-cor {{
-
+.caixa-cor {
     display:
         inline-block;
 
@@ -1081,11 +1060,10 @@ interface_html = f"""
 
     border:
         1px solid #999;
-}}
+}
 
 
-.creditos-cfem {{
-
+.creditos-cfem {
     border-top:
         1px solid #bbb;
 
@@ -1100,15 +1078,14 @@ interface_html = f"""
 
     line-height:
         1.45;
-}}
+}
 
 
 /* ==========================================================
    TOOLTIP
    ========================================================== */
 
-.tooltip-cfem {{
-
+.tooltip-cfem {
     font-family:
         Arial,
         sans-serif;
@@ -1118,17 +1095,16 @@ interface_html = f"""
 
     line-height:
         1.5;
-}}
+}
 
 
 /* ==========================================================
-   RESPONSIVIDADE
+   CELULAR
    ========================================================== */
 
-@media screen and (max-width: 768px) {{
+@media screen and (max-width: 768px) {
 
-    #titulo-webgis {{
-
+    #titulo-webgis {
         top:
             8px;
 
@@ -1140,28 +1116,25 @@ interface_html = f"""
 
         padding:
             7px 9px;
-    }}
+    }
 
 
-    #titulo-webgis .titulo-principal {{
-
+    #titulo-webgis .titulo-principal {
         font-size:
             14px;
 
         white-space:
             normal;
-    }}
+    }
 
 
-    #titulo-webgis .titulo-secundario {{
-
+    #titulo-webgis .titulo-secundario {
         display:
             none;
-    }}
+    }
 
 
-    #painel-cfem {{
-
+    #painel-cfem {
         top:
             auto;
 
@@ -1182,49 +1155,44 @@ interface_html = f"""
 
         padding:
             10px;
-    }}
+    }
 
 
-    #painel-cfem h3 {{
-
+    #painel-cfem h3 {
         font-size:
             14px;
 
         margin-bottom:
             5px;
-    }}
+    }
 
 
-    .rotulo-cfem {{
-
+    .rotulo-cfem {
         margin:
             6px 0 4px 0;
 
         font-size:
             11px;
-    }}
+    }
 
 
     #filtro-ano,
-    #busca-substancia {{
-
+    #busca-substancia {
         padding:
             7px;
 
         font-size:
             12px;
-    }}
+    }
 
 
-    #lista-substancias {{
-
+    #lista-substancias {
         max-height:
             150px;
-    }}
+    }
 
 
-    #legenda-cfem {{
-
+    #legenda-cfem {
         top:
             65px;
 
@@ -1242,38 +1210,34 @@ interface_html = f"""
 
         font-size:
             10px;
-    }}
+    }
 
 
-    .legenda-titulo {{
-
+    .legenda-titulo {
         font-size:
             11px;
-    }}
+    }
 
 
-    .caixa-cor {{
-
+    .caixa-cor {
         width:
             12px;
 
         height:
             12px;
-    }}
+    }
 
 
-    .creditos-cfem {{
-
+    .creditos-cfem {
         display:
             none;
-    }}
+    }
 
 
-    .leaflet-control-layers {{
-
+    .leaflet-control-layers {
         font-size:
             10px;
-    }}
+    }
 
 }
 
@@ -1281,7 +1245,7 @@ interface_html = f"""
 
 
 <!-- ========================================================
-     PAINEL DE CONSULTA
+     PAINEL
      ======================================================== -->
 
 <div id="painel-cfem">
@@ -1299,9 +1263,7 @@ interface_html = f"""
     </label>
 
 
-    <select
-        id="filtro-ano"
-    >
+    <select id="filtro-ano">
     </select>
 
 
@@ -1322,9 +1284,7 @@ interface_html = f"""
     >
 
 
-    <div
-        id="lista-substancias"
-    >
+    <div id="lista-substancias">
     </div>
 
 
@@ -1335,7 +1295,7 @@ interface_html = f"""
         </b>
 
         <span id="status-ano">
-            {ano_padrao}
+            __ANO_PADRAO__
         </span>
 
         ·
@@ -1366,86 +1326,65 @@ interface_html = f"""
 
 
     <div class="legenda-item">
-
         <span
             class="caixa-cor"
             style="background:#eeeeee;"
         ></span>
-
         Sem arrecadação
-
     </div>
 
 
     <div class="legenda-item">
-
         <span
             class="caixa-cor"
             style="background:#ffffcc;"
         ></span>
-
         Até R$ 10 mil
-
     </div>
 
 
     <div class="legenda-item">
-
         <span
             class="caixa-cor"
             style="background:#ffeda0;"
         ></span>
-
         R$ 10 mil – R$ 100 mil
-
     </div>
 
 
     <div class="legenda-item">
-
         <span
             class="caixa-cor"
             style="background:#fed976;"
         ></span>
-
         R$ 100 mil – R$ 1 milhão
-
     </div>
 
 
     <div class="legenda-item">
-
         <span
             class="caixa-cor"
             style="background:#feb24c;"
         ></span>
-
         R$ 1 mi – R$ 10 milhões
-
     </div>
 
 
     <div class="legenda-item">
-
         <span
             class="caixa-cor"
             style="background:#f03b20;"
         ></span>
-
         R$ 10 mi – R$ 100 milhões
-
     </div>
 
 
     <div class="legenda-item">
-
         <span
             class="caixa-cor"
             style="background:#bd0026;"
         ></span>
-
         Acima de R$ 100 milhões
-
     </div>
 
 
@@ -1477,30 +1416,30 @@ interface_html = f"""
 
 document.addEventListener(
     "DOMContentLoaded",
-    async function() {{
+    async function() {
 
         /* ==================================================
-           REFERÊNCIAS
+           CONFIGURAÇÃO
            ================================================== */
 
         const camadaMunicipios =
-            {nome_camada_js};
+            __CAMADA_MUNICIPIOS__;
 
 
         const anos =
-            {anos_json};
+            __ANOS_JSON__;
 
 
         const substancias =
-            {substancias_json};
+            __SUBSTANCIAS_JSON__;
 
 
         const principais =
-            {principais_json};
+            __PRINCIPAIS_JSON__;
 
 
         const anoPadrao =
-            {int(ano_padrao)};
+            __ANO_PADRAO__;
 
 
         let substanciaSelecionada =
@@ -1510,6 +1449,10 @@ document.addEventListener(
         let dadosCFEM =
             null;
 
+
+        /* ==================================================
+           ELEMENTOS
+           ================================================== */
 
         const filtroAno =
             document.getElementById(
@@ -1548,53 +1491,52 @@ document.addEventListener(
 
 
         /* ==================================================
-           NORMALIZAR TEXTO
-           Ignora acentos e maiúsculas/minúsculas
+           NORMALIZAÇÃO
            ================================================== */
 
-        function normalizar(texto) {{
+        function normalizar(texto) {
 
             return String(
                 texto || ""
             )
             .normalize("NFD")
             .replace(
-                /[\\u0300-\\u036f]/g,
+                /[\u0300-\u036f]/g,
                 ""
             )
             .toLowerCase()
             .trim();
 
-        }}
+        }
 
 
         /* ==================================================
-           FORMATAÇÃO MONETÁRIA
+           MOEDA
            ================================================== */
 
-        function moeda(valor) {{
+        function moeda(valor) {
 
             return Number(
                 valor || 0
             ).toLocaleString(
                 "pt-BR",
-                {{
+                {
                     style:
                         "currency",
 
                     currency:
                         "BRL"
-                }}
+                }
             );
 
-        }}
+        }
 
 
         /* ==================================================
-           CORES
+           COR
            ================================================== */
 
-        function corCFEM(valor) {{
+        function corCFEM(valor) {
 
             valor =
                 Number(
@@ -1602,60 +1544,56 @@ document.addEventListener(
                 );
 
 
-            if (
-                valor <= 0
-            )
+            if (valor <= 0) {
                 return "#eeeeee";
+            }
 
 
-            if (
-                valor <= 10000
-            )
+            if (valor <= 10000) {
                 return "#ffffcc";
+            }
 
 
-            if (
-                valor <= 100000
-            )
+            if (valor <= 100000) {
                 return "#ffeda0";
+            }
 
 
-            if (
-                valor <= 1000000
-            )
+            if (valor <= 1000000) {
                 return "#fed976";
+            }
 
 
-            if (
-                valor <= 10000000
-            )
+            if (valor <= 10000000) {
                 return "#feb24c";
+            }
 
 
-            if (
-                valor <= 100000000
-            )
+            if (valor <= 100000000) {
                 return "#f03b20";
+            }
 
 
             return "#bd0026";
 
-        }}
+        }
 
 
         /* ==================================================
-           PREENCHER ANOS
+           CRIAR SELETOR DE ANO
            ================================================== */
 
         anos
         .slice()
         .sort(
-            function(a, b) {{
+            function(a, b) {
+
                 return b - a;
-            }}
+
+            }
         )
         .forEach(
-            function(ano) {{
+            function(ano) {
 
                 const option =
                     document.createElement(
@@ -1674,33 +1612,33 @@ document.addEventListener(
                 if (
                     Number(ano) ===
                     Number(anoPadrao)
-                ) {{
+                ) {
 
                     option.selected =
                         true;
 
-                }}
+                }
 
 
                 filtroAno.appendChild(
                     option
                 );
 
-            }}
+            }
         );
 
 
         /* ==================================================
-           RESULTADOS DA BUSCA DE SUBSTÂNCIA
+           LISTA DE SUBSTÂNCIAS
            ================================================== */
 
         function mostrarLista(
-            textoBusca = ""
-        ) {{
+            textoBusca
+        ) {
 
             const busca =
                 normalizar(
-                    textoBusca
+                    textoBusca || ""
                 );
 
 
@@ -1726,8 +1664,9 @@ document.addEventListener(
                 "Todas as substâncias";
 
 
-            itemTodas.onclick =
-                function() {{
+            itemTodas.addEventListener(
+                "click",
+                function() {
 
                     substanciaSelecionada =
                         "TODAS";
@@ -1743,7 +1682,8 @@ document.addEventListener(
 
                     atualizarMapa();
 
-                }};
+                }
+            );
 
 
             listaSubstancias.appendChild(
@@ -1752,18 +1692,16 @@ document.addEventListener(
 
 
             /* ----------------------------------------------
-               FILTRAR SUBSTÂNCIAS
+               FILTRAGEM
                ---------------------------------------------- */
 
             let resultados =
                 substancias.filter(
-                    function(substancia) {{
+                    function(substancia) {
 
-                        if (!busca) {{
-
+                        if (!busca) {
                             return true;
-
-                        }}
+                        }
 
 
                         return normalizar(
@@ -1772,7 +1710,7 @@ document.addEventListener(
                             busca
                         );
 
-                    }}
+                    }
                 );
 
 
@@ -1780,51 +1718,44 @@ document.addEventListener(
                PRINCIPAIS PRIMEIRO
                ---------------------------------------------- */
 
-            if (!busca) {{
+            if (!busca) {
 
                 resultados.sort(
-                    function(a, b) {{
+                    function(a, b) {
 
-                        const pa =
-                            principais.indexOf(
-                                a
-                            );
+                        const posicaoA =
+                            principais.indexOf(a);
 
 
-                        const pb =
-                            principais.indexOf(
-                                b
-                            );
+                        const posicaoB =
+                            principais.indexOf(b);
 
 
                         if (
-                            pa !== -1 &&
-                            pb === -1
-                        ) {{
-
+                            posicaoA !== -1 &&
+                            posicaoB === -1
+                        ) {
                             return -1;
-
-                        }}
+                        }
 
 
                         if (
-                            pa === -1 &&
-                            pb !== -1
-                        ) {{
-
+                            posicaoA === -1 &&
+                            posicaoB !== -1
+                        ) {
                             return 1;
-
-                        }}
+                        }
 
 
                         if (
-                            pa !== -1 &&
-                            pb !== -1
-                        ) {{
-
-                            return pa - pb;
-
-                        }}
+                            posicaoA !== -1 &&
+                            posicaoB !== -1
+                        ) {
+                            return (
+                                posicaoA -
+                                posicaoB
+                            );
+                        }
 
 
                         return a.localeCompare(
@@ -1832,19 +1763,19 @@ document.addEventListener(
                             "pt-BR"
                         );
 
-                    }}
+                    }
                 );
 
-            }}
+            }
 
 
             /* ----------------------------------------------
-               NENHUM RESULTADO
+               SEM RESULTADOS
                ---------------------------------------------- */
 
             if (
                 resultados.length === 0
-            ) {{
+            ) {
 
                 const vazio =
                     document.createElement(
@@ -1864,11 +1795,11 @@ document.addEventListener(
                     vazio
                 );
 
-            }}
+            }
 
 
             /* ----------------------------------------------
-               MOSTRAR ATÉ 60 RESULTADOS
+               RESULTADOS
                ---------------------------------------------- */
 
             resultados
@@ -1877,7 +1808,7 @@ document.addEventListener(
                 60
             )
             .forEach(
-                function(substancia) {{
+                function(substancia) {
 
                     const item =
                         document.createElement(
@@ -1893,21 +1824,22 @@ document.addEventListener(
                         principais.includes(
                             substancia
                         )
-                    ) {{
+                    ) {
 
                         item.classList.add(
                             "item-principal"
                         );
 
-                    }}
+                    }
 
 
                     item.textContent =
                         substancia;
 
 
-                    item.onclick =
-                        function() {{
+                    item.addEventListener(
+                        "click",
+                        function() {
 
                             substanciaSelecionada =
                                 substancia;
@@ -1923,21 +1855,22 @@ document.addEventListener(
 
                             atualizarMapa();
 
-                        }};
+                        }
+                    );
 
 
                     listaSubstancias.appendChild(
                         item
                     );
 
-                }}
+                }
             );
 
 
             listaSubstancias.style.display =
                 "block";
 
-        }}
+        }
 
 
         /* ==================================================
@@ -1946,24 +1879,24 @@ document.addEventListener(
 
         buscaSubstancia.addEventListener(
             "focus",
-            function() {{
+            function() {
 
                 if (
                     substanciaSelecionada ===
                     "TODAS"
-                ) {{
+                ) {
 
                     buscaSubstancia.value =
                         "";
 
-                }}
+                }
 
 
                 mostrarLista(
                     buscaSubstancia.value
                 );
 
-            }}
+            }
         );
 
 
@@ -1973,23 +1906,23 @@ document.addEventListener(
 
         buscaSubstancia.addEventListener(
             "input",
-            function() {{
+            function() {
 
                 mostrarLista(
                     buscaSubstancia.value
                 );
 
-            }}
+            }
         );
 
 
         /* ==================================================
-           FECHAR LISTA AO CLICAR FORA
+           FECHAR LISTA
            ================================================== */
 
         document.addEventListener(
             "click",
-            function(event) {{
+            function(event) {
 
                 if (
                     !listaSubstancias.contains(
@@ -1997,23 +1930,27 @@ document.addEventListener(
                     )
                     &&
                     event.target !==
-                        buscaSubstancia
-                ) {{
+                    buscaSubstancia
+                ) {
 
                     listaSubstancias.style.display =
                         "none";
 
-                }}
+                }
 
-            }}
+            }
         );
 
 
         /* ==================================================
-           CARREGAR dados_cfem.json
+           CARREGAR JSON
            ================================================== */
 
-        try {{
+        try {
+
+            carregando.textContent =
+                "Carregando dados...";
+
 
             carregando.style.display =
                 "block";
@@ -2026,15 +1963,14 @@ document.addEventListener(
                 );
 
 
-            if (
-                !resposta.ok
-            ) {{
+            if (!resposta.ok) {
 
                 throw new Error(
-                    "Não foi possível carregar dados_cfem.json"
+                    "Erro HTTP " +
+                    resposta.status
                 );
 
-            }}
+            }
 
 
             dadosCFEM =
@@ -2044,11 +1980,12 @@ document.addEventListener(
             carregando.style.display =
                 "none";
 
-        }}
+        }
 
-        catch (erro) {{
+        catch (erro) {
 
             console.error(
+                "Erro ao carregar dados_cfem.json:",
                 erro
             );
 
@@ -2063,22 +2000,18 @@ document.addEventListener(
 
             return;
 
-        }}
+        }
 
 
         /* ==================================================
            ATUALIZAR MAPA
            ================================================== */
 
-        function atualizarMapa() {{
+        function atualizarMapa() {
 
-            if (
-                !dadosCFEM
-            ) {{
-
+            if (!dadosCFEM) {
                 return;
-
-            }}
+            }
 
 
             carregando.textContent =
@@ -2106,75 +2039,71 @@ document.addEventListener(
             if (
                 substanciaSelecionada ===
                 "TODAS"
-            ) {{
+            ) {
 
                 dadosCFEM.totais
-                .filter(
-                    function(item) {{
-
-                        return Number(
-                            item.Ano
-                        ) === ano;
-
-                    }}
-                )
                 .forEach(
-                    function(item) {{
+                    function(item) {
 
-                        valoresMunicipios.set(
-                            String(
-                                item.CodigoMunicipio
-                            ),
-
+                        if (
                             Number(
-                                item.CFEM_Total
-                            )
-                        );
+                                item.Ano
+                            ) === ano
+                        ) {
 
-                    }}
+                            valoresMunicipios.set(
+                                String(
+                                    item.CodigoMunicipio
+                                ),
+
+                                Number(
+                                    item.CFEM_Total
+                                )
+                            );
+
+                        }
+
+                    }
                 );
 
-            }}
+            }
 
 
             /* ----------------------------------------------
                SUBSTÂNCIA ESPECÍFICA
                ---------------------------------------------- */
 
-            else {{
+            else {
 
                 dadosCFEM.substancias
-                .filter(
-                    function(item) {{
+                .forEach(
+                    function(item) {
 
-                        return (
+                        if (
                             Number(
                                 item.Ano
                             ) === ano
                             &&
                             item["Substância"] ===
-                                substanciaSelecionada
-                        );
+                            substanciaSelecionada
+                        ) {
 
-                    }}
-                )
-                .forEach(
-                    function(item) {{
+                            valoresMunicipios.set(
+                                String(
+                                    item.CodigoMunicipio
+                                ),
 
-                        valoresMunicipios.set(
-                            String(
-                                item.CodigoMunicipio
-                            ),
+                                Number(
+                                    item.CFEM_Total
+                                )
+                            );
 
-                            Number(
-                                item.CFEM_Total
-                            )
-                        );
+                        }
 
-                    }}
+                    }
                 );
 
-            }}
+            }
 
 
             /* ----------------------------------------------
@@ -2182,7 +2111,15 @@ document.addEventListener(
                ---------------------------------------------- */
 
             camadaMunicipios.eachLayer(
-                function(layer) {{
+                function(layer) {
+
+                    if (
+                        !layer.feature ||
+                        !layer.feature.properties
+                    ) {
+                        return;
+                    }
+
 
                     const props =
                         layer.feature.properties;
@@ -2208,41 +2145,44 @@ document.addEventListener(
                         ano;
 
 
-                    layer.setStyle({{
+                    layer.setStyle(
+                        {
 
-                        fillColor:
-                            corCFEM(
-                                valor
-                            ),
+                            fillColor:
+                                corCFEM(
+                                    valor
+                                ),
 
-                        color:
-                            "#555555",
+                            color:
+                                "#555555",
 
-                        weight:
-                            0.6,
+                            weight:
+                                0.6,
 
-                        fillOpacity:
-                            0.80
+                            fillOpacity:
+                                0.80
 
-                    }});
+                        }
+                    );
 
 
                     /* --------------------------------------
-                       TEXTO DA SUBSTÂNCIA
+                       SUBSTÂNCIA DO TOOLTIP
                        -------------------------------------- */
 
-                    const substanciaTexto =
+                    let substanciaTexto =
+                        substanciaSelecionada;
 
+
+                    if (
                         substanciaSelecionada ===
                         "TODAS"
+                    ) {
 
-                        ?
+                        substanciaTexto =
+                            "Todas as substâncias";
 
-                        "Todas as substâncias"
-
-                        :
-
-                        substanciaSelecionada;
+                    }
 
 
                     /* --------------------------------------
@@ -2250,7 +2190,6 @@ document.addEventListener(
                        -------------------------------------- */
 
                     const conteudo =
-
                         '<div class="tooltip-cfem">' +
 
                         '<b>Município:</b> ' +
@@ -2269,75 +2208,133 @@ document.addEventListener(
                         '<br>' +
 
                         '<b>CFEM:</b> ' +
-                        moeda(
-                            valor
-                        ) +
+                        moeda(valor) +
 
                         '</div>';
 
 
-                    layer.bindTooltip(
-                        conteudo,
-                        {{
-                            sticky:
-                                true
-                        }}
-                    );
+                    if (
+                        layer.getTooltip()
+                    ) {
 
-                }}
+                        layer.setTooltipContent(
+                            conteudo
+                        );
+
+                    }
+
+                    else {
+
+                        layer.bindTooltip(
+                            conteudo,
+                            {
+                                sticky:
+                                    true
+                            }
+                        );
+
+                    }
+
+                }
             );
 
 
             /* ----------------------------------------------
-               ATUALIZAR STATUS
+               STATUS
                ---------------------------------------------- */
 
             statusAno.textContent =
                 ano;
 
 
-            statusSubstancia.textContent =
-
+            if (
                 substanciaSelecionada ===
                 "TODAS"
+            ) {
 
-                ?
+                statusSubstancia.textContent =
+                    "Todas as substâncias";
 
-                "Todas as substâncias"
+            }
 
-                :
+            else {
 
-                substanciaSelecionada;
+                statusSubstancia.textContent =
+                    substanciaSelecionada;
+
+            }
 
 
             carregando.style.display =
                 "none";
 
-        }}
+        }
 
 
         /* ==================================================
-           TROCAR ANO
+           ALTERAÇÃO DO ANO
            ================================================== */
 
         filtroAno.addEventListener(
             "change",
-            atualizarMapa
+            function() {
+
+                atualizarMapa();
+
+            }
         );
 
 
         /* ==================================================
-           PRIMEIRA ATUALIZAÇÃO
+           INICIALIZAR MAPA
            ================================================== */
 
         atualizarMapa();
 
-    }}
+    }
 );
 
 </script>
 """
 
+
+# ============================================================
+# 26. SUBSTITUIR MARCADORES
+# ============================================================
+
+interface_html = interface_html.replace(
+    "__CAMADA_MUNICIPIOS__",
+    nome_camada_js
+)
+
+interface_html = interface_html.replace(
+    "__ANOS_JSON__",
+    anos_json
+)
+
+interface_html = interface_html.replace(
+    "__SUBSTANCIAS_JSON__",
+    substancias_json
+)
+
+interface_html = interface_html.replace(
+    "__PRINCIPAIS_JSON__",
+    principais_json
+)
+
+interface_html = interface_html.replace(
+    "__ANO_PADRAO__",
+    str(
+        int(
+            ano_padrao
+        )
+    )
+)
+
+
+# ============================================================
+# 27. ADICIONAR INTERFACE
+# ============================================================
 
 mapa_cfem.get_root().html.add_child(
     folium.Element(
@@ -2347,7 +2344,7 @@ mapa_cfem.get_root().html.add_child(
 
 
 # ============================================================
-# 24. CONTROLE DOS MAPAS BASE
+# 28. CONTROLE DE MAPAS BASE
 # ============================================================
 
 folium.LayerControl(
@@ -2358,7 +2355,7 @@ folium.LayerControl(
 
 
 # ============================================================
-# 25. ENQUADRAR MINAS GERAIS
+# 29. ENQUADRAR MINAS GERAIS
 # ============================================================
 
 minx, miny, maxx, maxy = (
@@ -2380,7 +2377,7 @@ mapa_cfem.fit_bounds(
 
 
 # ============================================================
-# 26. SALVAR INDEX.HTML
+# 30. SALVAR MAPA
 # ============================================================
 
 print(
@@ -2393,7 +2390,7 @@ mapa_cfem.save(
 
 
 # ============================================================
-# 27. FINALIZAÇÃO
+# 31. FINALIZAÇÃO
 # ============================================================
 
 data_execucao = (
