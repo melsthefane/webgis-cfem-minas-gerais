@@ -10,7 +10,7 @@ import requests
 
 # ============================================================
 # WEBGIS CFEM - MINAS GERAIS
-# ETAPA 6
+# ETAPA 7
 #
 # Recursos:
 # - atualização automática dos dados da ANM
@@ -19,6 +19,8 @@ import requests
 # - busca inteligente por município
 # - zoom automático no município
 # - indicadores dinâmicos
+# - ranking municipal dinâmico Top 10
+# - ranking clicável com zoom no município
 # ============================================================
 
 
@@ -44,11 +46,9 @@ print("=" * 60)
 
 print("\nBaixando dados da ANM...")
 
-
 headers = {
     "User-Agent": "Mozilla/5.0"
 }
-
 
 response = requests.get(
     URL_CFEM,
@@ -56,9 +56,7 @@ response = requests.get(
     timeout=180
 )
 
-
 response.raise_for_status()
-
 
 print(
     f"Download concluído: "
@@ -72,7 +70,6 @@ print(
 
 print("\nLendo arquivo CSV...")
 
-
 cfem = pd.read_csv(
     BytesIO(response.content),
     sep=None,
@@ -80,12 +77,10 @@ cfem = pd.read_csv(
     encoding="latin1"
 )
 
-
 print(
     f"Registros encontrados: "
     f"{len(cfem):,}"
 )
-
 
 print(
     f"Colunas encontradas: "
@@ -105,7 +100,6 @@ cfem_mg = cfem[
     .eq("MG")
 ].copy()
 
-
 print(
     f"Registros de Minas Gerais: "
     f"{len(cfem_mg):,}"
@@ -119,18 +113,9 @@ print(
 cfem_mg["ValorRecolhido"] = (
     cfem_mg["ValorRecolhido"]
     .astype(str)
-    .str.replace(
-        ".",
-        "",
-        regex=False
-    )
-    .str.replace(
-        ",",
-        ".",
-        regex=False
-    )
+    .str.replace(".", "", regex=False)
+    .str.replace(",", ".", regex=False)
 )
-
 
 cfem_mg["ValorRecolhido"] = pd.to_numeric(
     cfem_mg["ValorRecolhido"],
@@ -164,11 +149,9 @@ cfem_mg["Ano"] = pd.to_numeric(
     errors="coerce"
 )
 
-
 cfem_mg = cfem_mg[
     cfem_mg["Ano"].notna()
 ].copy()
-
 
 cfem_mg["Ano"] = (
     cfem_mg["Ano"]
@@ -199,7 +182,6 @@ cfem_mg["Substância"] = (
     .str.strip()
 )
 
-
 cfem_mg.loc[
     cfem_mg["Substância"].eq(""),
     "Substância"
@@ -216,15 +198,12 @@ anos = sorted(
     .tolist()
 )
 
-
 if not anos:
     raise ValueError(
         "Nenhum ano foi encontrado na base da ANM."
     )
 
-
 ano_padrao = max(anos)
-
 
 print("\nAnos encontrados:")
 print(anos)
@@ -237,7 +216,6 @@ print(anos)
 print(
     "\nCalculando CFEM total por município..."
 )
-
 
 cfem_total = (
     cfem_mg
@@ -258,7 +236,6 @@ cfem_total = (
     )
 )
 
-
 cfem_total["CFEM_Total"] = (
     cfem_total["CFEM_Total"]
     .astype(float)
@@ -272,7 +249,6 @@ cfem_total["CFEM_Total"] = (
 print(
     "\nCalculando CFEM por substância..."
 )
-
 
 cfem_substancias = (
     cfem_mg
@@ -294,12 +270,10 @@ cfem_substancias = (
     )
 )
 
-
 cfem_substancias["CFEM_Total"] = (
     cfem_substancias["CFEM_Total"]
     .astype(float)
 )
-
 
 print(
     f"Registros agregados por substância: "
@@ -321,7 +295,6 @@ todas_substancias = sorted(
     .tolist(),
     key=lambda x: x.upper()
 )
-
 
 print(
     f"Substâncias encontradas: "
@@ -346,16 +319,13 @@ ranking_substancias = (
     )
 )
 
-
 principais_substancias = (
     ranking_substancias
     .head(10)["Substância"]
     .tolist()
 )
 
-
 print("\nPrincipais substâncias:")
-
 
 for numero, substancia in enumerate(
     principais_substancias,
@@ -373,7 +343,6 @@ for numero, substancia in enumerate(
 print(
     f"\nGerando {ARQUIVO_DADOS}..."
 )
-
 
 dados_webgis = {
 
@@ -432,7 +401,6 @@ with open(
         separators=(",", ":")
     )
 
-
 print(
     f"{ARQUIVO_DADOS} criado com sucesso."
 )
@@ -446,16 +414,13 @@ print(
     "\nCarregando municípios..."
 )
 
-
 municipios = gpd.read_file(
     ARQUIVO_MUNICIPIOS
 )
 
-
 municipios = municipios.to_crs(
     epsg=4326
 )
-
 
 municipios["CD_MUN"] = (
     municipios["CD_MUN"]
@@ -468,7 +433,6 @@ municipios["CD_MUN"] = (
     .str.zfill(7)
 )
 
-
 municipios = municipios[
     [
         "CD_MUN",
@@ -476,7 +440,6 @@ municipios = municipios[
         "geometry"
     ]
 ].copy()
-
 
 print(
     f"Municípios carregados: "
@@ -499,7 +462,6 @@ dados_iniciais = cfem_total[
     ]
 ].copy()
 
-
 geo_inicial = municipios.merge(
     dados_iniciais,
     left_on="CD_MUN",
@@ -507,13 +469,11 @@ geo_inicial = municipios.merge(
     how="left"
 )
 
-
 geo_inicial["CFEM_Total"] = (
     geo_inicial["CFEM_Total"]
     .fillna(0)
     .astype(float)
 )
-
 
 geo_inicial["Ano"] = (
     int(ano_padrao)
@@ -558,7 +518,6 @@ def cor_cfem(valor):
 print(
     "\nCriando mapa..."
 )
-
 
 mapa_cfem = folium.Map(
 
@@ -686,7 +645,6 @@ nome_camada_js = (
     camada_municipios.get_name()
 )
 
-
 nome_mapa_js = (
     mapa_cfem.get_name()
 )
@@ -699,7 +657,6 @@ nome_mapa_js = (
 minx, miny, maxx, maxy = (
     municipios.total_bounds
 )
-
 
 limites_mg = [
 
@@ -714,7 +671,6 @@ limites_mg = [
     ]
 
 ]
-
 
 limites_mg_json = json.dumps(
     limites_mg
@@ -739,7 +695,6 @@ titulo_html = """
 </div>
 """
 
-
 mapa_cfem.get_root().html.add_child(
     folium.Element(
         titulo_html
@@ -756,18 +711,15 @@ anos_json = json.dumps(
     ensure_ascii=False
 )
 
-
 substancias_json = json.dumps(
     todas_substancias,
     ensure_ascii=False
 )
 
-
 principais_json = json.dumps(
     principais_substancias,
     ensure_ascii=False
 )
-
 
 municipios_json = json.dumps(
 
@@ -789,7 +741,7 @@ municipios_json = json.dumps(
 
 
 # ============================================================
-# 26. INTERFACE HTML / CSS / JAVASCRIPT
+# 26. INTERFACE
 #
 # IMPORTANTE:
 # NÃO USAR f-string NESTE BLOCO.
@@ -803,12 +755,9 @@ interface_html = r"""
    ========================================================== */
 
 #titulo-webgis {
-
     position: fixed;
-
     top: 10px;
     left: 70px;
-
     z-index: 9998;
 
     background:
@@ -833,7 +782,6 @@ interface_html = r"""
 
 
 #titulo-webgis .titulo-principal {
-
     font-size:
         19px;
 
@@ -846,7 +794,6 @@ interface_html = r"""
 
 
 #titulo-webgis .titulo-secundario {
-
     font-size:
         12px;
 
@@ -868,16 +815,16 @@ interface_html = r"""
         fixed;
 
     top:
-        105px;
+        95px;
 
     right:
         20px;
 
     width:
-        330px;
+        350px;
 
     max-height:
-        calc(100vh - 135px);
+        calc(100vh - 120px);
 
     overflow-y:
         auto;
@@ -981,7 +928,7 @@ interface_html = r"""
 
 
 /* ==========================================================
-   RESULTADOS DE BUSCA
+   RESULTADOS DAS BUSCAS
    ========================================================== */
 
 #lista-substancias,
@@ -1059,7 +1006,7 @@ interface_html = r"""
 
 
 /* ==========================================================
-   BOTÃO
+   BOTÃO VOLTAR
    ========================================================== */
 
 #botao-voltar-mg {
@@ -1101,7 +1048,6 @@ interface_html = r"""
 
 
 /* ==========================================================
-   ETAPA 6
    INDICADORES
    ========================================================== */
 
@@ -1218,6 +1164,200 @@ interface_html = r"""
 
     line-height:
         1.25;
+}
+
+
+/* ==========================================================
+   ETAPA 7
+   RANKING
+   ========================================================== */
+
+#ranking-cfem {
+
+    margin-top:
+        13px;
+
+    padding-top:
+        10px;
+
+    border-top:
+        1px solid #ddd;
+}
+
+
+.ranking-cabecalho {
+
+    display:
+        flex;
+
+    align-items:
+        center;
+
+    justify-content:
+        space-between;
+
+    margin-bottom:
+        7px;
+}
+
+
+.ranking-titulo {
+
+    font-size:
+        12px;
+
+    font-weight:
+        bold;
+
+    color:
+        #444;
+}
+
+
+.ranking-top {
+
+    font-size:
+        9px;
+
+    color:
+        #777;
+
+    text-transform:
+        uppercase;
+
+    letter-spacing:
+        0.3px;
+}
+
+
+#lista-ranking {
+
+    border:
+        1px solid #ddd;
+
+    border-radius:
+        6px;
+
+    overflow:
+        hidden;
+
+    background:
+        white;
+}
+
+
+.item-ranking {
+
+    display:
+        grid;
+
+    grid-template-columns:
+        28px 1fr auto;
+
+    align-items:
+        center;
+
+    gap:
+        6px;
+
+    padding:
+        7px 8px;
+
+    border-bottom:
+        1px solid #eee;
+
+    cursor:
+        pointer;
+
+    transition:
+        background 0.15s ease;
+}
+
+
+.item-ranking:last-child {
+
+    border-bottom:
+        none;
+}
+
+
+.item-ranking:hover {
+
+    background:
+        #f1f1f1;
+}
+
+
+.ranking-posicao {
+
+    font-size:
+        11px;
+
+    font-weight:
+        bold;
+
+    color:
+        #777;
+
+    text-align:
+        center;
+}
+
+
+.ranking-municipio {
+
+    font-size:
+        11px;
+
+    font-weight:
+        600;
+
+    color:
+        #333;
+
+    overflow:
+        hidden;
+
+    text-overflow:
+        ellipsis;
+
+    white-space:
+        nowrap;
+}
+
+
+.ranking-valor {
+
+    font-size:
+        10px;
+
+    font-weight:
+        bold;
+
+    color:
+        #333;
+
+    white-space:
+        nowrap;
+
+    text-align:
+        right;
+}
+
+
+.ranking-vazio {
+
+    padding:
+        10px;
+
+    font-size:
+        11px;
+
+    color:
+        #777;
+
+    text-align:
+        center;
 }
 
 
@@ -1372,10 +1512,6 @@ interface_html = r"""
 }
 
 
-/* ==========================================================
-   TOOLTIP
-   ========================================================== */
-
 .tooltip-cfem {
 
     font-family:
@@ -1447,7 +1583,7 @@ interface_html = r"""
             auto;
 
         max-height:
-            46vh;
+            52vh;
 
         padding:
             10px;
@@ -1498,6 +1634,30 @@ interface_html = r"""
 
         font-size:
             12px;
+    }
+
+
+    .item-ranking {
+
+        grid-template-columns:
+            24px 1fr auto;
+
+        padding:
+            6px;
+    }
+
+
+    .ranking-municipio {
+
+        font-size:
+            10px;
+    }
+
+
+    .ranking-valor {
+
+        font-size:
+            9px;
     }
 
 
@@ -1559,7 +1719,7 @@ interface_html = r"""
 
 
 <!-- ========================================================
-     PAINEL DE CONSULTA
+     PAINEL
      ======================================================== -->
 
 <div id="painel-cfem">
@@ -1631,7 +1791,7 @@ interface_html = r"""
 
 
     <!-- ====================================================
-         ETAPA 6 - INDICADORES
+         INDICADORES
          ==================================================== -->
 
     <div id="indicadores-cfem">
@@ -1704,6 +1864,40 @@ interface_html = r"""
     </div>
 
 
+    <!-- ====================================================
+         ETAPA 7 - RANKING
+         ==================================================== -->
+
+    <div id="ranking-cfem">
+
+        <div class="ranking-cabecalho">
+
+            <div class="ranking-titulo">
+                Ranking municipal
+            </div>
+
+            <div class="ranking-top">
+                Top 10
+            </div>
+
+        </div>
+
+
+        <div id="lista-ranking">
+
+            <div class="ranking-vazio">
+                Carregando ranking...
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- ====================================================
+         STATUS
+         ==================================================== -->
+
     <div id="status-consulta">
 
         <b>
@@ -1742,86 +1936,65 @@ interface_html = r"""
 
 
     <div class="legenda-item">
-
         <span
             class="caixa-cor"
             style="background:#eeeeee;"
         ></span>
-
         Sem arrecadação
-
     </div>
 
 
     <div class="legenda-item">
-
         <span
             class="caixa-cor"
             style="background:#ffffcc;"
         ></span>
-
         Até R$ 10 mil
-
     </div>
 
 
     <div class="legenda-item">
-
         <span
             class="caixa-cor"
             style="background:#ffeda0;"
         ></span>
-
         R$ 10 mil – R$ 100 mil
-
     </div>
 
 
     <div class="legenda-item">
-
         <span
             class="caixa-cor"
             style="background:#fed976;"
         ></span>
-
         R$ 100 mil – R$ 1 milhão
-
     </div>
 
 
     <div class="legenda-item">
-
         <span
             class="caixa-cor"
             style="background:#feb24c;"
         ></span>
-
         R$ 1 mi – R$ 10 milhões
-
     </div>
 
 
     <div class="legenda-item">
-
         <span
             class="caixa-cor"
             style="background:#f03b20;"
         ></span>
-
         R$ 10 mi – R$ 100 milhões
-
     </div>
 
 
     <div class="legenda-item">
-
         <span
             class="caixa-cor"
             style="background:#bd0026;"
         ></span>
-
         Acima de R$ 100 milhões
-
     </div>
 
 
@@ -1962,10 +2135,6 @@ document.addEventListener(
             );
 
 
-        /* ==================================================
-           ELEMENTOS DOS INDICADORES
-           ================================================== */
-
         const indicadorTotal =
             document.getElementById(
                 "indicador-total"
@@ -1990,8 +2159,16 @@ document.addEventListener(
             );
 
 
+        /* ETAPA 7 */
+
+        const listaRanking =
+            document.getElementById(
+                "lista-ranking"
+            );
+
+
         /* ==================================================
-           NORMALIZAÇÃO DE TEXTO
+           NORMALIZAR TEXTO
            ================================================== */
 
         function normalizar(texto) {
@@ -2011,7 +2188,7 @@ document.addEventListener(
 
 
         /* ==================================================
-           FORMATAÇÃO MONETÁRIA
+           MOEDA COMPLETA
            ================================================== */
 
         function moeda(valor) {
@@ -2035,7 +2212,99 @@ document.addEventListener(
 
 
         /* ==================================================
-           COR CFEM
+           MOEDA COMPACTA
+           USADA NO RANKING
+           ================================================== */
+
+        function moedaCompacta(valor) {
+
+            valor =
+                Number(
+                    valor || 0
+                );
+
+
+            if (
+                valor >= 1000000000
+            ) {
+
+                return (
+                    "R$ " +
+                    (
+                        valor /
+                        1000000000
+                    )
+                    .toLocaleString(
+                        "pt-BR",
+                        {
+                            maximumFractionDigits:
+                                2
+                        }
+                    )
+                    +
+                    " bi"
+                );
+
+            }
+
+
+            if (
+                valor >= 1000000
+            ) {
+
+                return (
+                    "R$ " +
+                    (
+                        valor /
+                        1000000
+                    )
+                    .toLocaleString(
+                        "pt-BR",
+                        {
+                            maximumFractionDigits:
+                                2
+                        }
+                    )
+                    +
+                    " mi"
+                );
+
+            }
+
+
+            if (
+                valor >= 1000
+            ) {
+
+                return (
+                    "R$ " +
+                    (
+                        valor /
+                        1000
+                    )
+                    .toLocaleString(
+                        "pt-BR",
+                        {
+                            maximumFractionDigits:
+                                2
+                        }
+                    )
+                    +
+                    " mil"
+                );
+
+            }
+
+
+            return moeda(
+                valor
+            );
+
+        }
+
+
+        /* ==================================================
+           COR
            ================================================== */
 
         function corCFEM(valor) {
@@ -2131,7 +2400,7 @@ document.addEventListener(
 
 
         /* ==================================================
-           DESTAQUE DO MUNICÍPIO
+           DESTAQUE
            ================================================== */
 
         function aplicarDestaqueMunicipio() {
@@ -2176,7 +2445,7 @@ document.addEventListener(
 
 
         /* ==================================================
-           PREENCHER ANOS
+           ANOS
            ================================================== */
 
         anos
@@ -2225,7 +2494,7 @@ document.addEventListener(
 
 
         /* ==================================================
-           BUSCA DE SUBSTÂNCIA
+           SUBSTÂNCIAS
            ================================================== */
 
         function mostrarListaSubstancias(
@@ -2241,8 +2510,6 @@ document.addEventListener(
             listaSubstancias.innerHTML =
                 "";
 
-
-            /* TODAS */
 
             const itemTodas =
                 document.createElement(
@@ -2285,8 +2552,6 @@ document.addEventListener(
             );
 
 
-            /* TERMOS DE PESQUISA */
-
             const termos =
                 busca
                 .split(/\s+/)
@@ -2322,8 +2587,6 @@ document.addEventListener(
                 );
 
 
-            /* PRINCIPAIS PRIMEIRO */
-
             if (!busca) {
 
                 resultados.sort(
@@ -2341,9 +2604,7 @@ document.addEventListener(
                             posicaoA !== -1 &&
                             posicaoB === -1
                         ) {
-
                             return -1;
-
                         }
 
 
@@ -2351,9 +2612,7 @@ document.addEventListener(
                             posicaoA === -1 &&
                             posicaoB !== -1
                         ) {
-
                             return 1;
-
                         }
 
 
@@ -2519,7 +2778,7 @@ document.addEventListener(
 
 
         /* ==================================================
-           BUSCA DE MUNICÍPIO
+           MUNICÍPIOS
            ================================================== */
 
         function mostrarListaMunicipios(
@@ -2652,6 +2911,7 @@ document.addEventListener(
 
         /* ==================================================
            SELECIONAR MUNICÍPIO
+           Usado pela busca E pelo ranking.
            ================================================== */
 
         function selecionarMunicipio(
@@ -2837,7 +3097,7 @@ document.addEventListener(
 
 
         /* ==================================================
-           VOLTAR PARA MINAS GERAIS
+           VOLTAR PARA MG
            ================================================== */
 
         botaoVoltarMG.addEventListener(
@@ -2939,8 +3199,7 @@ document.addEventListener(
 
 
         /* ==================================================
-           ETAPA 6
-           CALCULAR INDICADORES
+           INDICADORES
            ================================================== */
 
         function atualizarIndicadores(
@@ -3006,10 +3265,6 @@ document.addEventListener(
             );
 
 
-            /* ----------------------------------------------
-               DESCOBRIR NOME DO MAIOR MUNICÍPIO
-               ---------------------------------------------- */
-
             let maiorMunicipio =
                 "—";
 
@@ -3046,10 +3301,6 @@ document.addEventListener(
             }
 
 
-            /* ----------------------------------------------
-               ATUALIZAR INTERFACE
-               ---------------------------------------------- */
-
             indicadorTotal.textContent =
                 moeda(
                     total
@@ -3071,6 +3322,260 @@ document.addEventListener(
 
             indicadorMaiorMunicipio.textContent =
                 maiorMunicipio;
+
+        }
+
+
+        /* ==================================================
+           ETAPA 7
+           ATUALIZAR RANKING MUNICIPAL
+           ================================================== */
+
+        function atualizarRanking(
+            valoresMunicipios
+        ) {
+
+            listaRanking.innerHTML =
+                "";
+
+
+            const ranking =
+                [];
+
+
+            /* ----------------------------------------------
+               Transformar Map em lista
+               ---------------------------------------------- */
+
+            valoresMunicipios.forEach(
+                function(valor, codigo) {
+
+                    const numero =
+                        Number(
+                            valor || 0
+                        );
+
+
+                    if (
+                        numero <= 0
+                    ) {
+
+                        return;
+
+                    }
+
+
+                    const municipio =
+                        municipiosBusca.find(
+                            function(item) {
+
+                                return (
+                                    String(
+                                        item.CD_MUN
+                                    )
+                                    ===
+                                    String(
+                                        codigo
+                                    )
+                                );
+
+                            }
+                        );
+
+
+                    if (
+                        !municipio
+                    ) {
+
+                        return;
+
+                    }
+
+
+                    ranking.push(
+                        {
+
+                            codigo:
+                                String(
+                                    codigo
+                                ),
+
+                            nome:
+                                municipio.NM_MUN,
+
+                            valor:
+                                numero
+
+                        }
+                    );
+
+                }
+            );
+
+
+            /* ----------------------------------------------
+               Ordenar do maior para o menor
+               ---------------------------------------------- */
+
+            ranking.sort(
+                function(a, b) {
+
+                    return (
+                        b.valor -
+                        a.valor
+                    );
+
+                }
+            );
+
+
+            /* ----------------------------------------------
+               Sem arrecadação
+               ---------------------------------------------- */
+
+            if (
+                ranking.length === 0
+            ) {
+
+                const vazio =
+                    document.createElement(
+                        "div"
+                    );
+
+
+                vazio.className =
+                    "ranking-vazio";
+
+
+                vazio.textContent =
+                    "Nenhum município com arrecadação "
+                    + "para esta consulta.";
+
+
+                listaRanking.appendChild(
+                    vazio
+                );
+
+
+                return;
+
+            }
+
+
+            /* ----------------------------------------------
+               Top 10
+               ---------------------------------------------- */
+
+            ranking
+            .slice(
+                0,
+                10
+            )
+            .forEach(
+                function(item, indice) {
+
+                    const linha =
+                        document.createElement(
+                            "div"
+                        );
+
+
+                    linha.className =
+                        "item-ranking";
+
+
+                    linha.title =
+                        "Clique para localizar "
+                        + item.nome
+                        + " no mapa";
+
+
+                    /* POSIÇÃO */
+
+                    const posicao =
+                        document.createElement(
+                            "div"
+                        );
+
+
+                    posicao.className =
+                        "ranking-posicao";
+
+
+                    posicao.textContent =
+                        (indice + 1) + "º";
+
+
+                    /* MUNICÍPIO */
+
+                    const municipio =
+                        document.createElement(
+                            "div"
+                        );
+
+
+                    municipio.className =
+                        "ranking-municipio";
+
+
+                    municipio.textContent =
+                        item.nome;
+
+
+                    /* VALOR */
+
+                    const valor =
+                        document.createElement(
+                            "div"
+                        );
+
+
+                    valor.className =
+                        "ranking-valor";
+
+
+                    valor.textContent =
+                        moedaCompacta(
+                            item.valor
+                        );
+
+
+                    /* CLIQUE */
+
+                    linha.addEventListener(
+                        "click",
+                        function() {
+
+                            selecionarMunicipio(
+                                item.codigo,
+                                item.nome
+                            );
+
+                        }
+                    );
+
+
+                    linha.appendChild(
+                        posicao
+                    );
+
+
+                    linha.appendChild(
+                        municipio
+                    );
+
+
+                    linha.appendChild(
+                        valor
+                    );
+
+
+                    listaRanking.appendChild(
+                        linha
+                    );
+
+                }
+            );
 
         }
 
@@ -3185,7 +3690,7 @@ document.addEventListener(
 
 
             /* ----------------------------------------------
-               ATUALIZAR POLÍGONOS
+               POLÍGONOS
                ---------------------------------------------- */
 
             camadaMunicipios.eachLayer(
@@ -3299,12 +3804,20 @@ document.addEventListener(
             );
 
 
-            /* ==============================================
-               ETAPA 6
-               ATUALIZAR INDICADORES
-               ============================================== */
+            /* ----------------------------------------------
+               INDICADORES
+               ---------------------------------------------- */
 
             atualizarIndicadores(
+                valoresMunicipios
+            );
+
+
+            /* ----------------------------------------------
+               ETAPA 7 - RANKING
+               ---------------------------------------------- */
+
+            atualizarRanking(
                 valoresMunicipios
             );
 
@@ -3349,7 +3862,7 @@ document.addEventListener(
 
 
         /* ==================================================
-           TROCAR ANO
+           ALTERAR ANO
            ================================================== */
 
         filtroAno.addEventListener(
@@ -3384,42 +3897,35 @@ interface_html = interface_html.replace(
     nome_mapa_js
 )
 
-
 interface_html = interface_html.replace(
     "__CAMADA_MUNICIPIOS__",
     nome_camada_js
 )
-
 
 interface_html = interface_html.replace(
     "__ANOS_JSON__",
     anos_json
 )
 
-
 interface_html = interface_html.replace(
     "__SUBSTANCIAS_JSON__",
     substancias_json
 )
-
 
 interface_html = interface_html.replace(
     "__PRINCIPAIS_JSON__",
     principais_json
 )
 
-
 interface_html = interface_html.replace(
     "__MUNICIPIOS_JSON__",
     municipios_json
 )
 
-
 interface_html = interface_html.replace(
     "__LIMITES_MG__",
     limites_mg_json
 )
-
 
 interface_html = interface_html.replace(
     "__ANO_PADRAO__",
@@ -3470,7 +3976,6 @@ print(
     "\nSalvando mapa..."
 )
 
-
 mapa_cfem.save(
     ARQUIVO_SAIDA
 )
@@ -3492,43 +3997,35 @@ print(
     "\n" + "=" * 60
 )
 
-
 print(
     "WEBGIS ATUALIZADO COM SUCESSO"
 )
-
 
 print(
     f"Mapa: {ARQUIVO_SAIDA}"
 )
 
-
 print(
     f"Dados: {ARQUIVO_DADOS}"
 )
-
 
 print(
     f"Execução: {data_execucao}"
 )
 
-
 print(
     f"Anos: {anos}"
 )
-
 
 print(
     f"Quantidade de municípios: "
     f"{len(municipios)}"
 )
 
-
 print(
     f"Quantidade de substâncias: "
     f"{len(todas_substancias)}"
 )
-
 
 print(
     "=" * 60
