@@ -10,7 +10,7 @@ import requests
 
 # ============================================================
 # WEBGIS CFEM - MINAS GERAIS
-# ETAPA 8
+# ETAPA 8 - VERSÃO CORRIGIDA
 #
 # Recursos:
 # - atualização automática dos dados da ANM
@@ -18,7 +18,7 @@ import requests
 # - filtro inteligente por substância
 # - busca inteligente por município
 # - clique direto no município
-# - zoom automático
+# - zoom pela busca e ranking
 # - indicadores dinâmicos
 # - ranking municipal Top 10
 # - ranking clicável
@@ -41,7 +41,7 @@ ARQUIVO_DADOS = "dados_cfem.json"
 
 print("=" * 60)
 print("WEBGIS CFEM - MINAS GERAIS")
-print("ETAPA 8")
+print("ETAPA 8 - VERSÃO CORRIGIDA")
 print("Iniciando atualização...")
 print("=" * 60)
 
@@ -83,15 +83,8 @@ cfem = pd.read_csv(
     encoding="latin1"
 )
 
-print(
-    f"Registros encontrados: "
-    f"{len(cfem):,}"
-)
-
-print(
-    f"Colunas encontradas: "
-    f"{len(cfem.columns)}"
-)
+print(f"Registros encontrados: {len(cfem):,}")
+print(f"Colunas encontradas: {len(cfem.columns)}")
 
 
 # ============================================================
@@ -106,10 +99,7 @@ cfem_mg = cfem[
     .eq("MG")
 ].copy()
 
-print(
-    f"Registros de Minas Gerais: "
-    f"{len(cfem_mg):,}"
-)
+print(f"Registros de Minas Gerais: {len(cfem_mg):,}")
 
 
 # ============================================================
@@ -136,11 +126,7 @@ cfem_mg["ValorRecolhido"] = pd.to_numeric(
 cfem_mg["CodigoMunicipio"] = (
     cfem_mg["CodigoMunicipio"]
     .astype(str)
-    .str.replace(
-        r"\.0$",
-        "",
-        regex=True
-    )
+    .str.replace(r"\.0$", "", regex=True)
     .str.strip()
     .str.zfill(7)
 )
@@ -159,10 +145,7 @@ cfem_mg = cfem_mg[
     cfem_mg["Ano"].notna()
 ].copy()
 
-cfem_mg["Ano"] = (
-    cfem_mg["Ano"]
-    .astype(int)
-)
+cfem_mg["Ano"] = cfem_mg["Ano"].astype(int)
 
 
 # ============================================================
@@ -219,9 +202,7 @@ print(anos)
 # 10. TOTAL POR MUNICÍPIO / ANO
 # ============================================================
 
-print(
-    "\nCalculando CFEM total por município..."
-)
+print("\nCalculando CFEM total por município...")
 
 cfem_total = (
     cfem_mg
@@ -251,9 +232,7 @@ cfem_total["CFEM_Total"] = (
 # 11. TOTAL POR MUNICÍPIO / ANO / SUBSTÂNCIA
 # ============================================================
 
-print(
-    "\nCalculando CFEM por substância..."
-)
+print("\nCalculando CFEM por substância...")
 
 cfem_substancias = (
     cfem_mg
@@ -290,9 +269,7 @@ print(
 # ============================================================
 
 todas_substancias = sorted(
-    cfem_substancias[
-        "Substância"
-    ]
+    cfem_substancias["Substância"]
     .dropna()
     .astype(str)
     .unique()
@@ -335,18 +312,14 @@ for numero, substancia in enumerate(
     principais_substancias,
     start=1
 ):
-    print(
-        f"{numero}. {substancia}"
-    )
+    print(f"{numero}. {substancia}")
 
 
 # ============================================================
 # 14. GERAR JSON
 # ============================================================
 
-print(
-    f"\nGerando {ARQUIVO_DADOS}..."
-)
+print(f"\nGerando {ARQUIVO_DADOS}...")
 
 dados_webgis = {
 
@@ -405,18 +378,14 @@ with open(
         separators=(",", ":")
     )
 
-print(
-    f"{ARQUIVO_DADOS} criado com sucesso."
-)
+print(f"{ARQUIVO_DADOS} criado com sucesso.")
 
 
 # ============================================================
 # 15. MUNICÍPIOS
 # ============================================================
 
-print(
-    "\nCarregando municípios..."
-)
+print("\nCarregando municípios...")
 
 municipios = gpd.read_file(
     ARQUIVO_MUNICIPIOS
@@ -479,8 +448,8 @@ geo_inicial["CFEM_Total"] = (
     .astype(float)
 )
 
-geo_inicial["Ano"] = (
-    int(ano_padrao)
+geo_inicial["Ano"] = int(
+    ano_padrao
 )
 
 
@@ -519,9 +488,7 @@ def cor_cfem(valor):
 # 18. MAPA
 # ============================================================
 
-print(
-    "\nCriando mapa..."
-)
+print("\nCriando mapa...")
 
 mapa_cfem = folium.Map(
     location=[
@@ -554,9 +521,7 @@ folium.TileLayer(
     ),
 
     overlay=False,
-
     control=True,
-
     show=True
 
 ).add_to(
@@ -565,7 +530,7 @@ folium.TileLayer(
 
 
 # ============================================================
-# 20. ESRI
+# 20. ESRI WORLD TOPO
 # ============================================================
 
 folium.TileLayer(
@@ -582,9 +547,7 @@ folium.TileLayer(
     attr="Tiles © Esri",
 
     overlay=False,
-
     control=True,
-
     show=False
 
 ).add_to(
@@ -610,6 +573,7 @@ camada_municipios = folium.GeoJson(
 
     name="CFEM",
 
+    # Não mostrar CFEM no LayerControl.
     control=False,
 
     style_function=lambda feature: {
@@ -650,7 +614,7 @@ nome_mapa_js = (
 
 
 # ============================================================
-# 23. LIMITES
+# 23. LIMITES DE MINAS GERAIS
 # ============================================================
 
 minx, miny, maxx, maxy = (
@@ -737,7 +701,8 @@ municipios_json = json.dumps(
 # ============================================================
 # 26. INTERFACE
 #
-# NÃO TRANSFORMAR EM f-string.
+# IMPORTANTE:
+# É string normal, NÃO usar f-string.
 # ============================================================
 
 interface_html = r"""
@@ -774,7 +739,7 @@ interface_html = r"""
 
 
 /* ==========================================================
-   PAINEL
+   PAINEL PRINCIPAL
    ========================================================== */
 
 #painel-cfem {
@@ -832,7 +797,7 @@ interface_html = r"""
 
 
 /* ==========================================================
-   BUSCAS
+   LISTAS DE BUSCA
    ========================================================== */
 
 #lista-substancias,
@@ -999,6 +964,7 @@ interface_html = r"""
 
 .item-ranking.selecionado {
     background: #e8e8e8;
+    box-shadow: inset 3px 0 0 #222;
 }
 
 .ranking-posicao {
@@ -1034,7 +1000,7 @@ interface_html = r"""
 
 
 /* ==========================================================
-   ETAPA 8 - PAINEL MUNICIPAL
+   PAINEL MUNICIPAL
    ========================================================== */
 
 #painel-municipio {
@@ -1096,6 +1062,11 @@ interface_html = r"""
     font-size: 16px;
 }
 
+
+/* ==========================================================
+   SÉRIE HISTÓRICA
+   ========================================================== */
+
 #serie-historica {
     margin-top: 12px;
 }
@@ -1104,12 +1075,14 @@ interface_html = r"""
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 10px;
     margin-bottom: 7px;
 }
 
 .serie-subtitulo {
     font-size: 9px;
     color: #777;
+    text-align: right;
 }
 
 #serie-barras {
@@ -1524,7 +1497,7 @@ interface_html = r"""
 
 
     <!-- ====================================================
-         ETAPA 8 - MUNICÍPIO SELECIONADO
+         MUNICÍPIO SELECIONADO
          ==================================================== -->
 
     <div id="painel-municipio">
@@ -1668,66 +1641,38 @@ interface_html = r"""
         CFEM arrecadada
     </div>
 
-
     <div class="legenda-item">
-        <span
-            class="caixa-cor"
-            style="background:#eeeeee;"
-        ></span>
+        <span class="caixa-cor" style="background:#eeeeee;"></span>
         Sem arrecadação
     </div>
 
-
     <div class="legenda-item">
-        <span
-            class="caixa-cor"
-            style="background:#ffffcc;"
-        ></span>
+        <span class="caixa-cor" style="background:#ffffcc;"></span>
         Até R$ 10 mil
     </div>
 
-
     <div class="legenda-item">
-        <span
-            class="caixa-cor"
-            style="background:#ffeda0;"
-        ></span>
+        <span class="caixa-cor" style="background:#ffeda0;"></span>
         R$ 10 mil – R$ 100 mil
     </div>
 
-
     <div class="legenda-item">
-        <span
-            class="caixa-cor"
-            style="background:#fed976;"
-        ></span>
+        <span class="caixa-cor" style="background:#fed976;"></span>
         R$ 100 mil – R$ 1 milhão
     </div>
 
-
     <div class="legenda-item">
-        <span
-            class="caixa-cor"
-            style="background:#feb24c;"
-        ></span>
+        <span class="caixa-cor" style="background:#feb24c;"></span>
         R$ 1 mi – R$ 10 milhões
     </div>
 
-
     <div class="legenda-item">
-        <span
-            class="caixa-cor"
-            style="background:#f03b20;"
-        ></span>
+        <span class="caixa-cor" style="background:#f03b20;"></span>
         R$ 10 mi – R$ 100 milhões
     </div>
 
-
     <div class="legenda-item">
-        <span
-            class="caixa-cor"
-            style="background:#bd0026;"
-        ></span>
+        <span class="caixa-cor" style="background:#bd0026;"></span>
         Acima de R$ 100 milhões
     </div>
 
@@ -1888,9 +1833,6 @@ document.addEventListener(
                 "lista-ranking"
             );
 
-
-        /* PAINEL MUNICIPAL */
-
         const painelMunicipio =
             document.getElementById(
                 "painel-municipio"
@@ -1938,7 +1880,7 @@ document.addEventListener(
 
 
         /* ==================================================
-           ÍNDICES
+           ÍNDICE DE MUNICÍPIOS
            ================================================== */
 
         const municipioPorCodigo =
@@ -1957,6 +1899,10 @@ document.addEventListener(
             }
         );
 
+
+        /* ==================================================
+           ÍNDICE DOS POLÍGONOS
+           ================================================== */
 
         const layerPorCodigo =
             new Map();
@@ -1988,7 +1934,7 @@ document.addEventListener(
 
 
         /* ==================================================
-           TEXTO
+           NORMALIZAÇÃO DE TEXTO
            ================================================== */
 
         function normalizar(texto) {
@@ -2008,7 +1954,7 @@ document.addEventListener(
 
 
         /* ==================================================
-           MOEDA
+           FORMATAÇÃO
            ================================================== */
 
         function moeda(valor) {
@@ -2119,7 +2065,7 @@ document.addEventListener(
 
 
         /* ==================================================
-           COR
+           CORES
            ================================================== */
 
         function corCFEM(valor) {
@@ -2159,7 +2105,7 @@ document.addEventListener(
 
 
         /* ==================================================
-           ESTILO
+           ESTILO NORMAL
            ================================================== */
 
         function aplicarEstiloNormal(
@@ -2200,6 +2146,10 @@ document.addEventListener(
 
         }
 
+
+        /* ==================================================
+           DESTAQUE DO MUNICÍPIO SELECIONADO
+           ================================================== */
 
         function aplicarDestaqueMunicipio() {
 
@@ -2688,7 +2638,7 @@ document.addEventListener(
 
 
         /* ==================================================
-           SELEÇÃO MUNICIPAL
+           SELECIONAR MUNICÍPIO
            ================================================== */
 
         function selecionarMunicipio(
@@ -2706,15 +2656,21 @@ document.addEventListener(
                 codigo;
 
             nomeMunicipioSelecionado =
-                nome;
+                String(
+                    nome || ""
+                );
 
             buscaMunicipio.value =
-                nome;
+                nomeMunicipioSelecionado;
 
             listaMunicipios.style.display =
                 "none";
 
 
+            /*
+             * Primeiro devolve todos os municípios
+             * ao estilo correspondente à consulta atual.
+             */
             camadaMunicipios.eachLayer(
                 function(layer) {
 
@@ -2726,6 +2682,9 @@ document.addEventListener(
             );
 
 
+            /*
+             * Localiza o layer correspondente ao código.
+             */
             camadaMunicipioSelecionado =
                 layerPorCodigo.get(
                     codigo
@@ -2739,8 +2698,13 @@ document.addEventListener(
                 aplicarDestaqueMunicipio();
 
 
+                /*
+                 * Busca e ranking enviam true.
+                 *
+                 * Clique no polígono envia false.
+                 */
                 if (
-                    fazerZoom !== false
+                    fazerZoom === true
                 ) {
 
                     const limites =
@@ -2767,69 +2731,127 @@ document.addEventListener(
 
                 }
 
-
-                if (
-                    camadaMunicipioSelecionado
-                    .getTooltip()
-                ) {
-
-                    camadaMunicipioSelecionado
-                    .openTooltip();
-
-                }
-
             }
 
 
+            /*
+             * Atualiza imediatamente as informações.
+             */
             atualizarPainelMunicipio();
+
             destacarMunicipioRanking();
 
         }
 
 
         /* ==================================================
-           ETAPA 8
-           CLIQUE DIRETO NOS POLÍGONOS
+           CLIQUE DIRETO NOS MUNICÍPIOS
+           CORREÇÃO DA ETAPA 8
            ================================================== */
 
-        camadaMunicipios.eachLayer(
-            function(layer) {
+        function ativarCliqueMunicipios() {
 
-                if (
-                    !layer.feature ||
-                    !layer.feature.properties
-                ) {
-                    return;
-                }
+            camadaMunicipios.eachLayer(
+                function(layer) {
 
-                const codigo =
-                    String(
-                        layer.feature
-                        .properties
-                        .CD_MUN
-                    );
-
-                const nome =
-                    layer.feature
-                    .properties
-                    .NM_MUN;
+                    if (
+                        !layer.feature ||
+                        !layer.feature.properties
+                    ) {
+                        return;
+                    }
 
 
-                layer.on(
-                    "click",
-                    function() {
+                    const codigo =
+                        String(
+                            layer.feature
+                            .properties
+                            .CD_MUN
+                        );
 
-                        selecionarMunicipio(
-                            codigo,
-                            nome,
-                            false
+                    const nome =
+                        String(
+                            layer.feature
+                            .properties
+                            .NM_MUN
+                        );
+
+
+                    /*
+                     * Evita duplicação caso a função
+                     * seja executada novamente.
+                     */
+                    if (
+                        layer._cliqueCFEMHandler
+                    ) {
+
+                        layer.off(
+                            "click",
+                            layer._cliqueCFEMHandler
                         );
 
                     }
-                );
 
-            }
-        );
+
+                    /*
+                     * Criamos um manipulador específico
+                     * para este município.
+                     */
+                    layer._cliqueCFEMHandler =
+                        function(evento) {
+
+                            /*
+                             * Interrompe a propagação
+                             * para o mapa Leaflet.
+                             */
+                            if (
+                                evento &&
+                                evento.originalEvent
+                            ) {
+
+                                L.DomEvent.stopPropagation(
+                                    evento.originalEvent
+                                );
+
+                            }
+
+
+                            /*
+                             * Selecionar sem zoom.
+                             */
+                            selecionarMunicipio(
+                                codigo,
+                                nome,
+                                false
+                            );
+
+                        };
+
+
+                    layer.on(
+                        "click",
+                        layer._cliqueCFEMHandler
+                    );
+
+
+                    /*
+                     * Mostra visualmente que o
+                     * polígono é clicável.
+                     */
+                    if (
+                        layer.getElement()
+                    ) {
+
+                        layer.getElement()
+                        .style.cursor =
+                            "pointer";
+
+                    }
+
+                }
+            );
+
+        }
 
 
         /* ==================================================
@@ -2981,7 +3003,7 @@ document.addEventListener(
 
 
         /* ==================================================
-           OBTER VALORES DA CONSULTA
+           VALORES DA CONSULTA
            ================================================== */
 
         function obterValoresConsulta(
@@ -3387,7 +3409,7 @@ document.addEventListener(
 
 
         /* ==================================================
-           DESTACAR NO RANKING
+           DESTAQUE NO RANKING
            ================================================== */
 
         function destacarMunicipioRanking() {
@@ -3428,7 +3450,6 @@ document.addEventListener(
 
 
         /* ==================================================
-           ETAPA 8
            SÉRIE HISTÓRICA MUNICIPAL
            ================================================== */
 
@@ -3532,7 +3553,7 @@ document.addEventListener(
 
 
         /* ==================================================
-           DESENHAR SÉRIE
+           DESENHAR SÉRIE HISTÓRICA
            ================================================== */
 
         function desenharSerieHistorica(
@@ -3744,8 +3765,7 @@ document.addEventListener(
 
 
         /* ==================================================
-           ETAPA 8
-           PAINEL DO MUNICÍPIO
+           PAINEL MUNICIPAL
            ================================================== */
 
         function atualizarPainelMunicipio() {
@@ -3945,7 +3965,7 @@ document.addEventListener(
 
 
             /* ----------------------------------------------
-               ATUALIZAR MUNICÍPIOS
+               MUNICÍPIOS
                ---------------------------------------------- */
 
             camadaMunicipios.eachLayer(
@@ -4079,7 +4099,7 @@ document.addEventListener(
 
 
             /* ----------------------------------------------
-               MUNICÍPIO SELECIONADO
+               RESTAURAR SELEÇÃO
                ---------------------------------------------- */
 
             if (
@@ -4146,6 +4166,13 @@ document.addEventListener(
 
             }
         );
+
+
+        /* ==================================================
+           ATIVAR CLIQUES DOS MUNICÍPIOS
+           ================================================== */
+
+        ativarCliqueMunicipios();
 
 
         /* ==================================================
@@ -4222,7 +4249,7 @@ mapa_cfem.get_root().html.add_child(
 
 
 # ============================================================
-# 29. CONTROLE DE MAPAS BASE
+# 29. CONTROLE DOS MAPAS BASE
 # ============================================================
 
 folium.LayerControl(
@@ -4245,9 +4272,7 @@ mapa_cfem.fit_bounds(
 # 31. SALVAR
 # ============================================================
 
-print(
-    "\nSalvando mapa..."
-)
+print("\nSalvando mapa...")
 
 mapa_cfem.save(
     ARQUIVO_SAIDA
@@ -4265,16 +4290,14 @@ data_execucao = (
     )
 )
 
-print(
-    "\n" + "=" * 60
-)
+print("\n" + "=" * 60)
 
 print(
     "WEBGIS ATUALIZADO COM SUCESSO"
 )
 
 print(
-    "ETAPA 8"
+    "ETAPA 8 - VERSÃO CORRIGIDA"
 )
 
 print(
@@ -4303,6 +4326,4 @@ print(
     f"{len(todas_substancias)}"
 )
 
-print(
-    "=" * 60
-)
+print("=" * 60)
