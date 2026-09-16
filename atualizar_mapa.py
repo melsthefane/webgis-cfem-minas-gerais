@@ -6,7 +6,6 @@ import json
 
 from io import BytesIO
 from datetime import datetime
-from branca.element import Template, MacroElement
 
 
 # ============================================================
@@ -21,8 +20,6 @@ URL_CFEM = (
 
 ARQUIVO_MUNICIPIOS = "municipios_mg.geojson"
 ARQUIVO_SAIDA = "index.html"
-
-# Novo arquivo que será utilizado pela interface dinâmica
 ARQUIVO_DADOS = "dados_cfem.json"
 
 
@@ -81,7 +78,8 @@ cfem_mg = cfem[
     cfem["UF"]
     .astype(str)
     .str.strip()
-    .str.upper() == "MG"
+    .str.upper()
+    .eq("MG")
 ].copy()
 
 print(
@@ -91,12 +89,8 @@ print(
 
 
 # ============================================================
-# 4. PADRONIZAR DADOS
+# 4. TRATAR VALOR RECOLHIDO
 # ============================================================
-
-# ------------------------------------------------------------
-# 4.1 Valor recolhido
-# ------------------------------------------------------------
 
 cfem_mg["ValorRecolhido"] = (
     cfem_mg["ValorRecolhido"]
@@ -111,32 +105,45 @@ cfem_mg["ValorRecolhido"] = pd.to_numeric(
 ).fillna(0)
 
 
-# ------------------------------------------------------------
-# 4.2 Código do município
-# ------------------------------------------------------------
+# ============================================================
+# 5. TRATAR CÓDIGO DO MUNICÍPIO
+# ============================================================
 
 cfem_mg["CodigoMunicipio"] = (
     cfem_mg["CodigoMunicipio"]
     .astype(str)
-    .str.replace(r"\.0$", "", regex=True)
+    .str.replace(
+        r"\.0$",
+        "",
+        regex=True
+    )
     .str.strip()
     .str.zfill(7)
 )
 
 
-# ------------------------------------------------------------
-# 4.3 Ano
-# ------------------------------------------------------------
+# ============================================================
+# 6. TRATAR ANO
+# ============================================================
 
 cfem_mg["Ano"] = pd.to_numeric(
     cfem_mg["Ano"],
     errors="coerce"
 )
 
+cfem_mg = cfem_mg[
+    cfem_mg["Ano"].notna()
+].copy()
 
-# ------------------------------------------------------------
-# 4.4 Nome do município
-# ------------------------------------------------------------
+cfem_mg["Ano"] = (
+    cfem_mg["Ano"]
+    .astype(int)
+)
+
+
+# ============================================================
+# 7. TRATAR MUNICÍPIO
+# ============================================================
 
 cfem_mg["Município"] = (
     cfem_mg["Município"]
@@ -146,9 +153,9 @@ cfem_mg["Município"] = (
 )
 
 
-# ------------------------------------------------------------
-# 4.5 Substância mineral
-# ------------------------------------------------------------
+# ============================================================
+# 8. TRATAR SUBSTÂNCIA
+# ============================================================
 
 cfem_mg["Substância"] = (
     cfem_mg["Substância"]
@@ -158,71 +165,72 @@ cfem_mg["Substância"] = (
 )
 
 cfem_mg.loc[
-    cfem_mg["Substância"] == "",
+    cfem_mg["Substância"].eq(""),
     "Substância"
 ] = "Não informada"
 
 
 # ============================================================
-# 5. CFEM TOTAL POR MUNICÍPIO E ANO
+# 9. IDENTIFICAR ANOS
 # ============================================================
 
-cfem_total = (
-    cfem_mg
-    .groupby(
-        [
-            "Ano",
-            "CodigoMunicipio"
-        ],
-        as_index=False
-    )["ValorRecolhido"]
-    .sum()
-    .rename(
-        columns={
-            "ValorRecolhido": "CFEM_Total"
-        }
-    )
-)
-
-
-cfem_total["CodigoMunicipio"] = (
-    cfem_total["CodigoMunicipio"]
-    .astype(str)
-    .str.replace(
-        r"\.0$",
-        "",
-        regex=True
-    )
-    .str.zfill(7)
-)
-
-
-cfem_total["Ano"] = pd.to_numeric(
-    cfem_total["Ano"],
-    errors="coerce"
-)
-
-
 anos = sorted(
-    cfem_total["Ano"]
-    .dropna()
-    .astype(int)
+    cfem_mg["Ano"]
     .unique()
+    .tolist()
 )
 
+if not anos:
+    raise ValueError(
+        "Nenhum ano foi encontrado nos dados da ANM."
+    )
+
+ano_padrao = max(anos)
 
 print("\nAnos encontrados:")
 print(anos)
 
 
 # ============================================================
-# 6. PREPARAR DADOS POR SUBSTÂNCIA
+# 10. CFEM TOTAL POR MUNICÍPIO E ANO
 # ============================================================
 
 print(
-    "\nPreparando dados por município, ano e substância..."
+    "\nCalculando totais por município e ano..."
 )
 
+cfem_total = (
+    cfem_mg
+    .groupby(
+        [
+            "Ano",
+            "CodigoMunicipio",
+            "Município"
+        ],
+        as_index=False
+    )["ValorRecolhido"]
+    .sum()
+    .rename(
+        columns={
+            "ValorRecolhido":
+                "CFEM_Total"
+        }
+    )
+)
+
+cfem_total["CFEM_Total"] = (
+    cfem_total["CFEM_Total"]
+    .astype(float)
+)
+
+
+# ============================================================
+# 11. CFEM POR MUNICÍPIO / ANO / SUBSTÂNCIA
+# ============================================================
+
+print(
+    "\nCalculando arrecadação por substância..."
+)
 
 cfem_substancias = (
     cfem_mg
@@ -238,45 +246,16 @@ cfem_substancias = (
     .sum()
     .rename(
         columns={
-            "ValorRecolhido": "CFEM_Total"
+            "ValorRecolhido":
+                "CFEM_Total"
         }
     )
 )
-
-
-# Remover registros sem ano válido
-
-cfem_substancias = (
-    cfem_substancias[
-        cfem_substancias["Ano"].notna()
-    ]
-    .copy()
-)
-
-
-cfem_substancias["Ano"] = (
-    cfem_substancias["Ano"]
-    .astype(int)
-)
-
-
-cfem_substancias["CodigoMunicipio"] = (
-    cfem_substancias["CodigoMunicipio"]
-    .astype(str)
-    .str.replace(
-        r"\.0$",
-        "",
-        regex=True
-    )
-    .str.zfill(7)
-)
-
 
 cfem_substancias["CFEM_Total"] = (
     cfem_substancias["CFEM_Total"]
     .astype(float)
 )
-
 
 print(
     f"Registros agregados por substância: "
@@ -285,13 +264,29 @@ print(
 
 
 # ============================================================
-# 7. IDENTIFICAR PRINCIPAIS SUBSTÂNCIAS
+# 12. TODAS AS SUBSTÂNCIAS
 # ============================================================
 
-print(
-    "\nIdentificando principais substâncias..."
+todas_substancias = sorted(
+    cfem_substancias[
+        "Substância"
+    ]
+    .dropna()
+    .astype(str)
+    .unique()
+    .tolist(),
+    key=lambda x: x.upper()
 )
 
+print(
+    f"Substâncias encontradas: "
+    f"{len(todas_substancias)}"
+)
+
+
+# ============================================================
+# 13. PRINCIPAIS SUBSTÂNCIAS
+# ============================================================
 
 ranking_substancias = (
     cfem_substancias
@@ -306,24 +301,14 @@ ranking_substancias = (
     )
 )
 
-
-# Quantidade de substâncias principais exibidas no futuro menu.
-# Podemos alterar esse número depois, se necessário.
-
-QUANTIDADE_PRINCIPAIS_SUBSTANCIAS = 10
-
-
 principais_substancias = (
     ranking_substancias
-    .head(
-        QUANTIDADE_PRINCIPAIS_SUBSTANCIAS
-    )["Substância"]
+    .head(10)["Substância"]
     .tolist()
 )
 
-
 print(
-    "\nPrincipais substâncias encontradas:"
+    "\nPrincipais substâncias:"
 )
 
 for posicao, substancia in enumerate(
@@ -336,72 +321,12 @@ for posicao, substancia in enumerate(
 
 
 # ============================================================
-# 8. GERAR dados_cfem.json
+# 14. GERAR dados_cfem.json
 # ============================================================
 
 print(
     f"\nGerando {ARQUIVO_DADOS}..."
 )
-
-
-# ------------------------------------------------------------
-# 8.1 Dados totais por município e ano
-# ------------------------------------------------------------
-
-dados_totais_json = (
-    cfem_mg
-    .groupby(
-        [
-            "Ano",
-            "CodigoMunicipio",
-            "Município"
-        ],
-        as_index=False
-    )["ValorRecolhido"]
-    .sum()
-    .rename(
-        columns={
-            "ValorRecolhido": "CFEM_Total"
-        }
-    )
-)
-
-
-dados_totais_json = (
-    dados_totais_json[
-        dados_totais_json["Ano"].notna()
-    ]
-    .copy()
-)
-
-
-dados_totais_json["Ano"] = (
-    dados_totais_json["Ano"]
-    .astype(int)
-)
-
-
-dados_totais_json["CodigoMunicipio"] = (
-    dados_totais_json["CodigoMunicipio"]
-    .astype(str)
-    .str.replace(
-        r"\.0$",
-        "",
-        regex=True
-    )
-    .str.zfill(7)
-)
-
-
-dados_totais_json["CFEM_Total"] = (
-    dados_totais_json["CFEM_Total"]
-    .astype(float)
-)
-
-
-# ------------------------------------------------------------
-# 8.2 Montar estrutura JSON
-# ------------------------------------------------------------
 
 dados_webgis = {
 
@@ -425,13 +350,16 @@ dados_webgis = {
             "e Estatística — IBGE",
 
         "anos":
-            [int(ano) for ano in anos],
+            [int(x) for x in anos],
+
+        "ano_padrao":
+            int(ano_padrao),
+
+        "substancias":
+            todas_substancias,
 
         "principais_substancias":
             principais_substancias,
-
-        "quantidade_principais_substancias":
-            QUANTIDADE_PRINCIPAIS_SUBSTANCIAS,
 
         "gerado_em":
             datetime.now().strftime(
@@ -439,33 +367,16 @@ dados_webgis = {
             )
     },
 
+    "totais":
+        cfem_total.to_dict(
+            orient="records"
+        ),
 
-    # Dados usados quando o usuário selecionar
-    # "Todas as substâncias"
-
-    "totais": (
-        dados_totais_json
-        .to_dict(
+    "substancias":
+        cfem_substancias.to_dict(
             orient="records"
         )
-    ),
-
-
-    # Dados utilizados quando uma substância
-    # específica for selecionada
-
-    "substancias": (
-        cfem_substancias
-        .to_dict(
-            orient="records"
-        )
-    )
 }
-
-
-# ------------------------------------------------------------
-# 8.3 Salvar JSON
-# ------------------------------------------------------------
 
 with open(
     ARQUIVO_DADOS,
@@ -480,34 +391,26 @@ with open(
         separators=(",", ":")
     )
 
-
 print(
-    f"{ARQUIVO_DADOS} gerado com sucesso."
+    f"{ARQUIVO_DADOS} criado com sucesso."
 )
 
 
 # ============================================================
-# 9. CARREGAR MUNICÍPIOS DE MINAS GERAIS
+# 15. CARREGAR MUNICÍPIOS DE MINAS GERAIS
 # ============================================================
 
 print(
     "\nCarregando municípios..."
 )
 
-
 municipios = gpd.read_file(
     ARQUIVO_MUNICIPIOS
 )
 
-
-# Garantir WGS84
-
 municipios = municipios.to_crs(
     epsg=4326
 )
-
-
-# Padronizar código IBGE
 
 municipios["CD_MUN"] = (
     municipios["CD_MUN"]
@@ -520,6 +423,13 @@ municipios["CD_MUN"] = (
     .str.zfill(7)
 )
 
+municipios = municipios[
+    [
+        "CD_MUN",
+        "NM_MUN",
+        "geometry"
+    ]
+].copy()
 
 print(
     f"Municípios carregados: "
@@ -528,7 +438,40 @@ print(
 
 
 # ============================================================
-# 10. FUNÇÃO DE CORES
+# 16. DADOS DO ANO INICIAL
+# ============================================================
+
+dados_iniciais = cfem_total[
+    cfem_total["Ano"].eq(
+        ano_padrao
+    )
+][
+    [
+        "CodigoMunicipio",
+        "CFEM_Total"
+    ]
+].copy()
+
+geo_inicial = municipios.merge(
+    dados_iniciais,
+    left_on="CD_MUN",
+    right_on="CodigoMunicipio",
+    how="left"
+)
+
+geo_inicial["CFEM_Total"] = (
+    geo_inicial["CFEM_Total"]
+    .fillna(0)
+    .astype(float)
+)
+
+geo_inicial["Ano"] = int(
+    ano_padrao
+)
+
+
+# ============================================================
+# 17. FUNÇÃO DE CORES
 # ============================================================
 
 def cor_cfem(valor):
@@ -556,134 +499,138 @@ def cor_cfem(valor):
 
 
 # ============================================================
-# 11. CRIAR MAPA
+# 18. CRIAR MAPA
 # ============================================================
 
 print(
     "\nCriando mapa..."
 )
 
-
 mapa_cfem = folium.Map(
-
     location=[
         -18.5,
         -44.5
     ],
-
     zoom_start=6,
-
     tiles=None,
-
-    control_scale=True
+    control_scale=True,
+    prefer_canvas=True
 )
 
 
 # ============================================================
-# 12. MAPAS BASE
+# 19. MAPAS BASE
 # ============================================================
 
-# CyclOSM
-
 folium.TileLayer(
-
     tiles=(
         "https://{s}.tile-cyclosm.openstreetmap.fr/"
         "cyclosm/{z}/{x}/{y}.png"
     ),
-
     name="CyclOSM",
-
     attr=(
         "CyclOSM | "
         "© OpenStreetMap contributors"
     ),
-
     overlay=False,
-
     control=True,
-
     show=True
-
 ).add_to(
     mapa_cfem
 )
 
 
-# Esri World Topo
-
 folium.TileLayer(
-
     tiles=(
         "https://server.arcgisonline.com/"
         "ArcGIS/rest/services/"
         "World_Topo_Map/MapServer/"
         "tile/{z}/{y}/{x}"
     ),
-
     name="Esri World Topo",
-
     attr="Tiles © Esri",
-
     overlay=False,
-
     control=True,
-
     show=False
-
 ).add_to(
     mapa_cfem
 )
 
 
 # ============================================================
-# 13. TÍTULO DO MAPA
+# 20. UMA ÚNICA CAMADA MUNICIPAL
+# ============================================================
+
+camada_municipios = folium.GeoJson(
+    geo_inicial[
+        [
+            "CD_MUN",
+            "NM_MUN",
+            "Ano",
+            "CFEM_Total",
+            "geometry"
+        ]
+    ],
+
+    name="CFEM",
+
+    style_function=lambda feature: {
+
+        "fillColor":
+            cor_cfem(
+                feature[
+                    "properties"
+                ]["CFEM_Total"]
+            ),
+
+        "color":
+            "#555555",
+
+        "weight":
+            0.6,
+
+        "fillOpacity":
+            0.80
+    },
+
+    highlight_function=lambda feature: {
+
+        "weight":
+            3,
+
+        "color":
+            "#111111",
+
+        "fillOpacity":
+            0.92
+    }
+).add_to(
+    mapa_cfem
+)
+
+
+nome_camada_js = (
+    camada_municipios.get_name()
+)
+
+
+# ============================================================
+# 21. TÍTULO
 # ============================================================
 
 titulo_html = """
-<div style="
-    position: fixed;
-    top: 10px;
-    left: 70px;
-    z-index: 9999;
+<div id="titulo-webgis">
 
-    background-color: rgba(255,255,255,0.95);
-
-    border: 2px solid #777;
-    border-radius: 6px;
-
-    padding: 10px 18px;
-
-    box-shadow: 0 1px 5px rgba(0,0,0,0.4);
-
-    text-align: left;
-
-    font-family: Arial, sans-serif;
-
-    white-space: nowrap;
-">
-
-    <div style="
-        font-size: 20px;
-        font-weight: bold;
-        line-height: 1.2;
-        white-space: nowrap;
-    ">
+    <div class="titulo-principal">
         Mapa de Arrecadação da CFEM — Minas Gerais
     </div>
 
-    <div style="
-        font-size: 13px;
-        margin-top: 5px;
-        line-height: 1.3;
-        white-space: nowrap;
-    ">
+    <div class="titulo-secundario">
         Compensação Financeira pela Exploração de Recursos Minerais
     </div>
 
 </div>
 """
-
 
 mapa_cfem.get_root().html.add_child(
     folium.Element(
@@ -691,103 +638,61 @@ mapa_cfem.get_root().html.add_child(
     )
 )
 
+
 # ============================================================
-# 13.1 PAINEL DE FILTROS - ANO E SUBSTÂNCIA
+# 22. PREPARAR DADOS PARA JAVASCRIPT
 # ============================================================
 
-# Ano mais recente disponível
-ano_padrao = max(anos)
-
-
-# ------------------------------------------------------------
-# Criar opções do seletor de ano
-# ------------------------------------------------------------
-
-opcoes_anos = ""
-
-for ano in sorted(anos, reverse=True):
-
-    selecionado = (
-        "selected"
-        if ano == ano_padrao
-        else ""
-    )
-
-    texto_ano = str(ano)
-
-    # Ano mais recente ainda pode representar dados parciais
-    if ano == ano_padrao:
-        texto_ano = f"{ano}"
-
-    opcoes_anos += (
-        f'<option value="{ano}" {selecionado}>'
-        f'{texto_ano}'
-        f'</option>'
-    )
-
-
-# ------------------------------------------------------------
-# Criar opções do seletor de substâncias
-# ------------------------------------------------------------
-
-opcoes_substancias = (
-    '<option value="TODAS" selected>'
-    'Todas as substâncias'
-    '</option>'
+anos_json = json.dumps(
+    [int(x) for x in anos],
+    ensure_ascii=False
 )
 
-for substancia in principais_substancias:
+substancias_json = json.dumps(
+    todas_substancias,
+    ensure_ascii=False
+)
 
-    # Escapar caracteres que poderiam interferir no HTML
-    substancia_html = (
-        str(substancia)
-        .replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace('"', "&quot;")
-    )
-
-    opcoes_substancias += (
-        f'<option value="{substancia_html}">'
-        f'{substancia_html}'
-        f'</option>'
-    )
+principais_json = json.dumps(
+    principais_substancias,
+    ensure_ascii=False
+)
 
 
-# ------------------------------------------------------------
-# HTML + CSS do painel
-# ------------------------------------------------------------
+# ============================================================
+# 23. INTERFACE HTML + CSS + JAVASCRIPT
+# ============================================================
 
-painel_filtros_html = f"""
+interface_html = f"""
 <style>
 
 /* ==========================================================
-   PAINEL DE FILTROS
+   TÍTULO
    ========================================================== */
 
-#painel-filtros-cfem {{
+#titulo-webgis {{
 
     position: fixed;
 
-    top: 95px;
-    right: 20px;
-
-    width: 290px;
+    top: 10px;
+    left: 70px;
 
     z-index: 9998;
 
-    background: rgba(255,255,255,0.96);
+    background:
+        rgba(255,255,255,0.96);
 
-    border: 1px solid #999;
+    border:
+        1px solid #888;
 
-    border-radius: 8px;
+    border-radius:
+        7px;
 
-    padding: 14px;
-
-    box-sizing: border-box;
+    padding:
+        9px 16px;
 
     box-shadow:
-        0 2px 8px rgba(0,0,0,0.25);
+        0 2px 7px rgba(0,0,0,0.25);
 
     font-family:
         Arial,
@@ -795,79 +700,424 @@ painel_filtros_html = f"""
 }}
 
 
-#painel-filtros-cfem .titulo-painel {{
+#titulo-webgis .titulo-principal {{
 
-    font-size: 16px;
+    font-size:
+        19px;
 
-    font-weight: bold;
+    font-weight:
+        bold;
 
-    margin-bottom: 12px;
-
-    color: #333;
+    white-space:
+        nowrap;
 }}
 
 
-#painel-filtros-cfem label {{
+#titulo-webgis .titulo-secundario {{
 
-    display: block;
+    font-size:
+        12px;
 
-    margin-top: 8px;
+    margin-top:
+        4px;
 
-    margin-bottom: 5px;
-
-    font-size: 12px;
-
-    font-weight: bold;
-
-    color: #444;
+    white-space:
+        nowrap;
 }}
 
 
-#painel-filtros-cfem select {{
+/* ==========================================================
+   PAINEL DE CONSULTA
+   ========================================================== */
 
-    width: 100%;
+#painel-cfem {{
 
-    padding: 8px 10px;
+    position:
+        fixed;
 
-    border: 1px solid #aaa;
+    top:
+        105px;
 
-    border-radius: 5px;
+    right:
+        20px;
 
-    background-color: white;
+    width:
+        310px;
 
-    font-size: 13px;
+    max-height:
+        calc(100vh - 135px);
+
+    overflow-y:
+        auto;
+
+    z-index:
+        9999;
+
+    background:
+        rgba(255,255,255,0.97);
+
+    border:
+        1px solid #999;
+
+    border-radius:
+        8px;
+
+    padding:
+        14px;
+
+    box-sizing:
+        border-box;
+
+    box-shadow:
+        0 2px 8px rgba(0,0,0,0.28);
+
+    font-family:
+        Arial,
+        sans-serif;
+}}
+
+
+#painel-cfem h3 {{
+
+    margin:
+        0 0 12px 0;
+
+    font-size:
+        16px;
+}}
+
+
+.rotulo-cfem {{
+
+    display:
+        block;
+
+    font-size:
+        12px;
+
+    font-weight:
+        bold;
+
+    margin:
+        10px 0 5px 0;
+
+    color:
+        #444;
+}}
+
+
+/* ==========================================================
+   ANO
+   ========================================================== */
+
+#filtro-ano {{
+
+    width:
+        100%;
+
+    padding:
+        8px;
+
+    border:
+        1px solid #aaa;
+
+    border-radius:
+        5px;
+
+    background:
+        white;
+
+    box-sizing:
+        border-box;
+
+    font-size:
+        13px;
+}}
+
+
+/* ==========================================================
+   BUSCA DE SUBSTÂNCIA
+   ========================================================== */
+
+#busca-substancia {{
+
+    width:
+        100%;
+
+    padding:
+        8px;
+
+    border:
+        1px solid #aaa;
+
+    border-radius:
+        5px;
+
+    box-sizing:
+        border-box;
+
+    font-size:
+        13px;
+
+    background:
+        white;
+}}
+
+
+#busca-substancia:focus {{
+
+    outline:
+        2px solid #777;
+
+    outline-offset:
+        1px;
+}}
+
+
+#lista-substancias {{
+
+    display:
+        none;
+
+    max-height:
+        230px;
+
+    overflow-y:
+        auto;
+
+    margin-top:
+        3px;
+
+    border:
+        1px solid #bbb;
+
+    border-radius:
+        5px;
+
+    background:
+        white;
+
+    box-shadow:
+        0 2px 5px rgba(0,0,0,0.15);
+}}
+
+
+.item-substancia {{
+
+    padding:
+        8px 9px;
+
+    font-size:
+        12px;
+
+    cursor:
+        pointer;
+
+    border-bottom:
+        1px solid #eee;
+}}
+
+
+.item-substancia:last-child {{
+
+    border-bottom:
+        none;
+}}
+
+
+.item-substancia:hover {{
+
+    background:
+        #eeeeee;
+}}
+
+
+.item-principal {{
+
+    font-weight:
+        bold;
+}}
+
+
+.sem-resultado {{
+
+    padding:
+        9px;
+
+    font-size:
+        11px;
+
+    color:
+        #777;
+}}
+
+
+/* ==========================================================
+   STATUS
+   ========================================================== */
+
+#status-consulta {{
+
+    margin-top:
+        12px;
+
+    padding-top:
+        9px;
+
+    border-top:
+        1px solid #ddd;
+
+    font-size:
+        11px;
+
+    line-height:
+        1.5;
+
+    color:
+        #555;
+}}
+
+
+#carregando-cfem {{
+
+    display:
+        none;
+
+    margin-top:
+        8px;
+
+    font-size:
+        11px;
+
+    font-weight:
+        bold;
+}}
+
+
+/* ==========================================================
+   LEGENDA
+   ========================================================== */
+
+#legenda-cfem {{
+
+    position:
+        fixed;
+
+    bottom:
+        30px;
+
+    left:
+        30px;
+
+    width:
+        275px;
+
+    z-index:
+        9997;
+
+    background:
+        rgba(255,255,255,0.96);
+
+    border:
+        1px solid #888;
+
+    border-radius:
+        7px;
+
+    padding:
+        12px;
+
+    box-sizing:
+        border-box;
+
+    box-shadow:
+        0 2px 7px rgba(0,0,0,0.25);
 
     font-family:
         Arial,
         sans-serif;
 
-    box-sizing: border-box;
-
-    cursor: pointer;
+    font-size:
+        12px;
 }}
 
 
-#painel-filtros-cfem select:focus {{
+.legenda-titulo {{
 
-    outline: 2px solid #777;
+    font-size:
+        14px;
 
-    outline-offset: 1px;
+    font-weight:
+        bold;
+
+    margin-bottom:
+        8px;
 }}
 
 
-#status-filtro-cfem {{
+.legenda-item {{
 
-    margin-top: 11px;
+    margin-bottom:
+        4px;
+}}
 
-    padding-top: 9px;
 
-    border-top: 1px solid #ddd;
+.caixa-cor {{
 
-    font-size: 11px;
+    display:
+        inline-block;
 
-    line-height: 1.4;
+    width:
+        16px;
 
-    color: #666;
+    height:
+        16px;
+
+    margin-right:
+        6px;
+
+    vertical-align:
+        middle;
+
+    border:
+        1px solid #999;
+}}
+
+
+.creditos-cfem {{
+
+    border-top:
+        1px solid #bbb;
+
+    margin-top:
+        9px;
+
+    padding-top:
+        7px;
+
+    font-size:
+        10px;
+
+    line-height:
+        1.45;
+}}
+
+
+/* ==========================================================
+   TOOLTIP
+   ========================================================== */
+
+.tooltip-cfem {{
+
+    font-family:
+        Arial,
+        sans-serif;
+
+    font-size:
+        12px;
+
+    line-height:
+        1.5;
 }}
 
 
@@ -877,110 +1127,346 @@ painel_filtros_html = f"""
 
 @media screen and (max-width: 768px) {{
 
-    /*
-    Título adaptado para telas menores.
-    */
+    #titulo-webgis {{
 
-    #painel-filtros-cfem {{
+        top:
+            8px;
 
-        top: auto;
+        left:
+            50px;
 
-        bottom: 15px;
-        left: 10px;
-        right: 10px;
+        right:
+            8px;
 
-        width: auto;
-
-        max-height: 42vh;
-
-        overflow-y: auto;
-
-        padding: 10px;
-
-        z-index: 10000;
+        padding:
+            7px 9px;
     }}
 
 
-    #painel-filtros-cfem .titulo-painel {{
+    #titulo-webgis .titulo-principal {{
 
-        font-size: 14px;
+        font-size:
+            14px;
 
-        margin-bottom: 7px;
+        white-space:
+            normal;
     }}
 
 
-    #painel-filtros-cfem label {{
+    #titulo-webgis .titulo-secundario {{
 
-        margin-top: 5px;
-
-        font-size: 11px;
+        display:
+            none;
     }}
 
 
-    #painel-filtros-cfem select {{
+    #painel-cfem {{
 
-        padding: 7px;
+        top:
+            auto;
 
-        font-size: 12px;
+        bottom:
+            10px;
+
+        left:
+            8px;
+
+        right:
+            8px;
+
+        width:
+            auto;
+
+        max-height:
+            38vh;
+
+        padding:
+            10px;
     }}
 
 
-    #status-filtro-cfem {{
+    #painel-cfem h3 {{
 
-        font-size: 10px;
+        font-size:
+            14px;
 
-        margin-top: 7px;
-
-        padding-top: 6px;
+        margin-bottom:
+            5px;
     }}
 
-}}
+
+    .rotulo-cfem {{
+
+        margin:
+            6px 0 4px 0;
+
+        font-size:
+            11px;
+    }}
+
+
+    #filtro-ano,
+    #busca-substancia {{
+
+        padding:
+            7px;
+
+        font-size:
+            12px;
+    }}
+
+
+    #lista-substancias {{
+
+        max-height:
+            150px;
+    }}
+
+
+    #legenda-cfem {{
+
+        top:
+            65px;
+
+        bottom:
+            auto;
+
+        left:
+            8px;
+
+        width:
+            190px;
+
+        padding:
+            8px;
+
+        font-size:
+            10px;
+    }}
+
+
+    .legenda-titulo {{
+
+        font-size:
+            11px;
+    }}
+
+
+    .caixa-cor {{
+
+        width:
+            12px;
+
+        height:
+            12px;
+    }}
+
+
+    .creditos-cfem {{
+
+        display:
+            none;
+    }}
+
+
+    .leaflet-control-layers {{
+
+        font-size:
+            10px;
+    }}
+
+}
 
 </style>
 
 
-<div id="painel-filtros-cfem">
+<!-- ========================================================
+     PAINEL DE CONSULTA
+     ======================================================== -->
 
-    <div class="titulo-painel">
+<div id="painel-cfem">
+
+    <h3>
         Consulta CFEM
-    </div>
+    </h3>
 
 
-    <label for="filtro-ano-cfem">
+    <label
+        class="rotulo-cfem"
+        for="filtro-ano"
+    >
         Ano
     </label>
 
-    <select id="filtro-ano-cfem">
 
-        {opcoes_anos}
-
+    <select
+        id="filtro-ano"
+    >
     </select>
 
 
-    <label for="filtro-substancia-cfem">
+    <label
+        class="rotulo-cfem"
+        for="busca-substancia"
+    >
         Substância mineral
     </label>
 
-    <select id="filtro-substancia-cfem">
 
-        {opcoes_substancias}
+    <input
+        id="busca-substancia"
+        type="text"
+        value="Todas as substâncias"
+        autocomplete="off"
+        placeholder="Digite o nome da substância..."
+    >
 
-    </select>
+
+    <div
+        id="lista-substancias"
+    >
+    </div>
 
 
-    <div id="status-filtro-cfem">
+    <div id="status-consulta">
 
-        Exibindo:
-
-        <b id="status-ano-cfem">
-            {ano_padrao}
+        <b>
+            Exibindo:
         </b>
+
+        <span id="status-ano">
+            {ano_padrao}
+        </span>
 
         ·
 
-        <b id="status-substancia-cfem">
+        <span id="status-substancia">
             Todas as substâncias
-        </b>
+        </span>
+
+    </div>
+
+
+    <div id="carregando-cfem">
+        Atualizando mapa...
+    </div>
+
+</div>
+
+
+<!-- ========================================================
+     LEGENDA
+     ======================================================== -->
+
+<div id="legenda-cfem">
+
+    <div class="legenda-titulo">
+        CFEM arrecadada
+    </div>
+
+
+    <div class="legenda-item">
+
+        <span
+            class="caixa-cor"
+            style="background:#eeeeee;"
+        ></span>
+
+        Sem arrecadação
+
+    </div>
+
+
+    <div class="legenda-item">
+
+        <span
+            class="caixa-cor"
+            style="background:#ffffcc;"
+        ></span>
+
+        Até R$ 10 mil
+
+    </div>
+
+
+    <div class="legenda-item">
+
+        <span
+            class="caixa-cor"
+            style="background:#ffeda0;"
+        ></span>
+
+        R$ 10 mil – R$ 100 mil
+
+    </div>
+
+
+    <div class="legenda-item">
+
+        <span
+            class="caixa-cor"
+            style="background:#fed976;"
+        ></span>
+
+        R$ 100 mil – R$ 1 milhão
+
+    </div>
+
+
+    <div class="legenda-item">
+
+        <span
+            class="caixa-cor"
+            style="background:#feb24c;"
+        ></span>
+
+        R$ 1 mi – R$ 10 milhões
+
+    </div>
+
+
+    <div class="legenda-item">
+
+        <span
+            class="caixa-cor"
+            style="background:#f03b20;"
+        ></span>
+
+        R$ 10 mi – R$ 100 milhões
+
+    </div>
+
+
+    <div class="legenda-item">
+
+        <span
+            class="caixa-cor"
+            style="background:#bd0026;"
+        ></span>
+
+        Acima de R$ 100 milhões
+
+    </div>
+
+
+    <div class="creditos-cfem">
+
+        <b>Autoria:</b>
+        Melissa Carvalho
+
+        <br>
+
+        <b>Elaboração:</b>
+        13/09/2026
+
+        <br>
+
+        <b>Fontes:</b>
+        Malha Municipal de Minas Gerais — IBGE;
+
+        <br>
+
+        Arrecadação da CFEM (2022–2026) — ANM.
 
     </div>
 
@@ -991,55 +1477,860 @@ painel_filtros_html = f"""
 
 document.addEventListener(
     "DOMContentLoaded",
-    function() {{
+    async function() {{
+
+        /* ==================================================
+           REFERÊNCIAS
+           ================================================== */
+
+        const camadaMunicipios =
+            {nome_camada_js};
+
+
+        const anos =
+            {anos_json};
+
+
+        const substancias =
+            {substancias_json};
+
+
+        const principais =
+            {principais_json};
+
+
+        const anoPadrao =
+            {int(ano_padrao)};
+
+
+        let substanciaSelecionada =
+            "TODAS";
+
+
+        let dadosCFEM =
+            null;
+
 
         const filtroAno =
             document.getElementById(
-                "filtro-ano-cfem"
+                "filtro-ano"
             );
 
-        const filtroSubstancia =
+
+        const buscaSubstancia =
             document.getElementById(
-                "filtro-substancia-cfem"
+                "busca-substancia"
             );
+
+
+        const listaSubstancias =
+            document.getElementById(
+                "lista-substancias"
+            );
+
 
         const statusAno =
             document.getElementById(
-                "status-ano-cfem"
+                "status-ano"
             );
+
 
         const statusSubstancia =
             document.getElementById(
-                "status-substancia-cfem"
+                "status-substancia"
             );
 
 
-        function atualizarStatusFiltros() {{
-
-            statusAno.textContent =
-                filtroAno.options[
-                    filtroAno.selectedIndex
-                ].text;
+        const carregando =
+            document.getElementById(
+                "carregando-cfem"
+            );
 
 
-            statusSubstancia.textContent =
-                filtroSubstancia.options[
-                    filtroSubstancia.selectedIndex
-                ].text;
+        /* ==================================================
+           NORMALIZAR TEXTO
+           Ignora acentos e maiúsculas/minúsculas
+           ================================================== */
+
+        function normalizar(texto) {{
+
+            return String(
+                texto || ""
+            )
+            .normalize("NFD")
+            .replace(
+                /[\\u0300-\\u036f]/g,
+                ""
+            )
+            .toLowerCase()
+            .trim();
 
         }}
 
 
+        /* ==================================================
+           FORMATAÇÃO MONETÁRIA
+           ================================================== */
+
+        function moeda(valor) {{
+
+            return Number(
+                valor || 0
+            ).toLocaleString(
+                "pt-BR",
+                {{
+                    style:
+                        "currency",
+
+                    currency:
+                        "BRL"
+                }}
+            );
+
+        }}
+
+
+        /* ==================================================
+           CORES
+           ================================================== */
+
+        function corCFEM(valor) {{
+
+            valor =
+                Number(
+                    valor || 0
+                );
+
+
+            if (
+                valor <= 0
+            )
+                return "#eeeeee";
+
+
+            if (
+                valor <= 10000
+            )
+                return "#ffffcc";
+
+
+            if (
+                valor <= 100000
+            )
+                return "#ffeda0";
+
+
+            if (
+                valor <= 1000000
+            )
+                return "#fed976";
+
+
+            if (
+                valor <= 10000000
+            )
+                return "#feb24c";
+
+
+            if (
+                valor <= 100000000
+            )
+                return "#f03b20";
+
+
+            return "#bd0026";
+
+        }}
+
+
+        /* ==================================================
+           PREENCHER ANOS
+           ================================================== */
+
+        anos
+        .slice()
+        .sort(
+            function(a, b) {{
+                return b - a;
+            }}
+        )
+        .forEach(
+            function(ano) {{
+
+                const option =
+                    document.createElement(
+                        "option"
+                    );
+
+
+                option.value =
+                    ano;
+
+
+                option.textContent =
+                    ano;
+
+
+                if (
+                    Number(ano) ===
+                    Number(anoPadrao)
+                ) {{
+
+                    option.selected =
+                        true;
+
+                }}
+
+
+                filtroAno.appendChild(
+                    option
+                );
+
+            }}
+        );
+
+
+        /* ==================================================
+           RESULTADOS DA BUSCA DE SUBSTÂNCIA
+           ================================================== */
+
+        function mostrarLista(
+            textoBusca = ""
+        ) {{
+
+            const busca =
+                normalizar(
+                    textoBusca
+                );
+
+
+            listaSubstancias.innerHTML =
+                "";
+
+
+            /* ----------------------------------------------
+               TODAS AS SUBSTÂNCIAS
+               ---------------------------------------------- */
+
+            const itemTodas =
+                document.createElement(
+                    "div"
+                );
+
+
+            itemTodas.className =
+                "item-substancia item-principal";
+
+
+            itemTodas.textContent =
+                "Todas as substâncias";
+
+
+            itemTodas.onclick =
+                function() {{
+
+                    substanciaSelecionada =
+                        "TODAS";
+
+
+                    buscaSubstancia.value =
+                        "Todas as substâncias";
+
+
+                    listaSubstancias.style.display =
+                        "none";
+
+
+                    atualizarMapa();
+
+                }};
+
+
+            listaSubstancias.appendChild(
+                itemTodas
+            );
+
+
+            /* ----------------------------------------------
+               FILTRAR SUBSTÂNCIAS
+               ---------------------------------------------- */
+
+            let resultados =
+                substancias.filter(
+                    function(substancia) {{
+
+                        if (!busca) {{
+
+                            return true;
+
+                        }}
+
+
+                        return normalizar(
+                            substancia
+                        ).includes(
+                            busca
+                        );
+
+                    }}
+                );
+
+
+            /* ----------------------------------------------
+               PRINCIPAIS PRIMEIRO
+               ---------------------------------------------- */
+
+            if (!busca) {{
+
+                resultados.sort(
+                    function(a, b) {{
+
+                        const pa =
+                            principais.indexOf(
+                                a
+                            );
+
+
+                        const pb =
+                            principais.indexOf(
+                                b
+                            );
+
+
+                        if (
+                            pa !== -1 &&
+                            pb === -1
+                        ) {{
+
+                            return -1;
+
+                        }}
+
+
+                        if (
+                            pa === -1 &&
+                            pb !== -1
+                        ) {{
+
+                            return 1;
+
+                        }}
+
+
+                        if (
+                            pa !== -1 &&
+                            pb !== -1
+                        ) {{
+
+                            return pa - pb;
+
+                        }}
+
+
+                        return a.localeCompare(
+                            b,
+                            "pt-BR"
+                        );
+
+                    }}
+                );
+
+            }}
+
+
+            /* ----------------------------------------------
+               NENHUM RESULTADO
+               ---------------------------------------------- */
+
+            if (
+                resultados.length === 0
+            ) {{
+
+                const vazio =
+                    document.createElement(
+                        "div"
+                    );
+
+
+                vazio.className =
+                    "sem-resultado";
+
+
+                vazio.textContent =
+                    "Nenhuma substância encontrada.";
+
+
+                listaSubstancias.appendChild(
+                    vazio
+                );
+
+            }}
+
+
+            /* ----------------------------------------------
+               MOSTRAR ATÉ 60 RESULTADOS
+               ---------------------------------------------- */
+
+            resultados
+            .slice(
+                0,
+                60
+            )
+            .forEach(
+                function(substancia) {{
+
+                    const item =
+                        document.createElement(
+                            "div"
+                        );
+
+
+                    item.className =
+                        "item-substancia";
+
+
+                    if (
+                        principais.includes(
+                            substancia
+                        )
+                    ) {{
+
+                        item.classList.add(
+                            "item-principal"
+                        );
+
+                    }}
+
+
+                    item.textContent =
+                        substancia;
+
+
+                    item.onclick =
+                        function() {{
+
+                            substanciaSelecionada =
+                                substancia;
+
+
+                            buscaSubstancia.value =
+                                substancia;
+
+
+                            listaSubstancias.style.display =
+                                "none";
+
+
+                            atualizarMapa();
+
+                        }};
+
+
+                    listaSubstancias.appendChild(
+                        item
+                    );
+
+                }}
+            );
+
+
+            listaSubstancias.style.display =
+                "block";
+
+        }}
+
+
+        /* ==================================================
+           FOCO NA BUSCA
+           ================================================== */
+
+        buscaSubstancia.addEventListener(
+            "focus",
+            function() {{
+
+                if (
+                    substanciaSelecionada ===
+                    "TODAS"
+                ) {{
+
+                    buscaSubstancia.value =
+                        "";
+
+                }}
+
+
+                mostrarLista(
+                    buscaSubstancia.value
+                );
+
+            }}
+        );
+
+
+        /* ==================================================
+           DIGITAÇÃO
+           ================================================== */
+
+        buscaSubstancia.addEventListener(
+            "input",
+            function() {{
+
+                mostrarLista(
+                    buscaSubstancia.value
+                );
+
+            }}
+        );
+
+
+        /* ==================================================
+           FECHAR LISTA AO CLICAR FORA
+           ================================================== */
+
+        document.addEventListener(
+            "click",
+            function(event) {{
+
+                if (
+                    !listaSubstancias.contains(
+                        event.target
+                    )
+                    &&
+                    event.target !==
+                        buscaSubstancia
+                ) {{
+
+                    listaSubstancias.style.display =
+                        "none";
+
+                }}
+
+            }}
+        );
+
+
+        /* ==================================================
+           CARREGAR dados_cfem.json
+           ================================================== */
+
+        try {{
+
+            carregando.style.display =
+                "block";
+
+
+            const resposta =
+                await fetch(
+                    "dados_cfem.json?v=" +
+                    Date.now()
+                );
+
+
+            if (
+                !resposta.ok
+            ) {{
+
+                throw new Error(
+                    "Não foi possível carregar dados_cfem.json"
+                );
+
+            }}
+
+
+            dadosCFEM =
+                await resposta.json();
+
+
+            carregando.style.display =
+                "none";
+
+        }}
+
+        catch (erro) {{
+
+            console.error(
+                erro
+            );
+
+
+            carregando.textContent =
+                "Erro ao carregar os dados da CFEM.";
+
+
+            carregando.style.display =
+                "block";
+
+
+            return;
+
+        }}
+
+
+        /* ==================================================
+           ATUALIZAR MAPA
+           ================================================== */
+
+        function atualizarMapa() {{
+
+            if (
+                !dadosCFEM
+            ) {{
+
+                return;
+
+            }}
+
+
+            carregando.textContent =
+                "Atualizando mapa...";
+
+
+            carregando.style.display =
+                "block";
+
+
+            const ano =
+                Number(
+                    filtroAno.value
+                );
+
+
+            const valoresMunicipios =
+                new Map();
+
+
+            /* ----------------------------------------------
+               TODAS AS SUBSTÂNCIAS
+               ---------------------------------------------- */
+
+            if (
+                substanciaSelecionada ===
+                "TODAS"
+            ) {{
+
+                dadosCFEM.totais
+                .filter(
+                    function(item) {{
+
+                        return Number(
+                            item.Ano
+                        ) === ano;
+
+                    }}
+                )
+                .forEach(
+                    function(item) {{
+
+                        valoresMunicipios.set(
+                            String(
+                                item.CodigoMunicipio
+                            ),
+
+                            Number(
+                                item.CFEM_Total
+                            )
+                        );
+
+                    }}
+                );
+
+            }}
+
+
+            /* ----------------------------------------------
+               SUBSTÂNCIA ESPECÍFICA
+               ---------------------------------------------- */
+
+            else {{
+
+                dadosCFEM.substancias
+                .filter(
+                    function(item) {{
+
+                        return (
+                            Number(
+                                item.Ano
+                            ) === ano
+                            &&
+                            item["Substância"] ===
+                                substanciaSelecionada
+                        );
+
+                    }}
+                )
+                .forEach(
+                    function(item) {{
+
+                        valoresMunicipios.set(
+                            String(
+                                item.CodigoMunicipio
+                            ),
+
+                            Number(
+                                item.CFEM_Total
+                            )
+                        );
+
+                    }}
+                );
+
+            }}
+
+
+            /* ----------------------------------------------
+               RECOLORIR MUNICÍPIOS
+               ---------------------------------------------- */
+
+            camadaMunicipios.eachLayer(
+                function(layer) {{
+
+                    const props =
+                        layer.feature.properties;
+
+
+                    const codigo =
+                        String(
+                            props.CD_MUN
+                        );
+
+
+                    const valor =
+                        valoresMunicipios.get(
+                            codigo
+                        ) || 0;
+
+
+                    props.CFEM_Total =
+                        valor;
+
+
+                    props.Ano =
+                        ano;
+
+
+                    layer.setStyle({{
+
+                        fillColor:
+                            corCFEM(
+                                valor
+                            ),
+
+                        color:
+                            "#555555",
+
+                        weight:
+                            0.6,
+
+                        fillOpacity:
+                            0.80
+
+                    }});
+
+
+                    /* --------------------------------------
+                       TEXTO DA SUBSTÂNCIA
+                       -------------------------------------- */
+
+                    const substanciaTexto =
+
+                        substanciaSelecionada ===
+                        "TODAS"
+
+                        ?
+
+                        "Todas as substâncias"
+
+                        :
+
+                        substanciaSelecionada;
+
+
+                    /* --------------------------------------
+                       TOOLTIP
+                       -------------------------------------- */
+
+                    const conteudo =
+
+                        '<div class="tooltip-cfem">' +
+
+                        '<b>Município:</b> ' +
+                        props.NM_MUN +
+
+                        '<br>' +
+
+                        '<b>Ano:</b> ' +
+                        ano +
+
+                        '<br>' +
+
+                        '<b>Substância:</b> ' +
+                        substanciaTexto +
+
+                        '<br>' +
+
+                        '<b>CFEM:</b> ' +
+                        moeda(
+                            valor
+                        ) +
+
+                        '</div>';
+
+
+                    layer.bindTooltip(
+                        conteudo,
+                        {{
+                            sticky:
+                                true
+                        }}
+                    );
+
+                }}
+            );
+
+
+            /* ----------------------------------------------
+               ATUALIZAR STATUS
+               ---------------------------------------------- */
+
+            statusAno.textContent =
+                ano;
+
+
+            statusSubstancia.textContent =
+
+                substanciaSelecionada ===
+                "TODAS"
+
+                ?
+
+                "Todas as substâncias"
+
+                :
+
+                substanciaSelecionada;
+
+
+            carregando.style.display =
+                "none";
+
+        }}
+
+
+        /* ==================================================
+           TROCAR ANO
+           ================================================== */
+
         filtroAno.addEventListener(
             "change",
-            atualizarStatusFiltros
+            atualizarMapa
         );
 
 
-        filtroSubstancia.addEventListener(
-            "change",
-            atualizarStatusFiltros
-        );
+        /* ==================================================
+           PRIMEIRA ATUALIZAÇÃO
+           ================================================== */
+
+        atualizarMapa();
 
     }}
 );
@@ -1050,390 +2341,29 @@ document.addEventListener(
 
 mapa_cfem.get_root().html.add_child(
     folium.Element(
-        painel_filtros_html
+        interface_html
     )
 )
 
-# ============================================================
-# 14. CRIAR CAMADAS DE CFEM POR ANO
-# ============================================================
-
-for ano in anos:
-
-    print(
-        f"Criando camada {ano}..."
-    )
-
-
-    dados_ano = cfem_total[
-        cfem_total["Ano"] == ano
-    ].copy()
-
-
-    geo_ano = municipios.merge(
-
-        dados_ano[
-            [
-                "CodigoMunicipio",
-                "CFEM_Total"
-            ]
-        ],
-
-        left_on="CD_MUN",
-
-        right_on="CodigoMunicipio",
-
-        how="left"
-    )
-
-
-    geo_ano["CFEM_Total"] = (
-        geo_ano["CFEM_Total"]
-        .fillna(0)
-        .astype(float)
-    )
-
-
-    geo_ano["Ano"] = int(
-        ano
-    )
-
-
-    # --------------------------------------------------------
-    # Formatação monetária brasileira
-    # --------------------------------------------------------
-
-    geo_ano["CFEM_R$"] = (
-        geo_ano["CFEM_Total"]
-        .apply(
-            lambda x:
-            f"R$ {x:,.2f}"
-            .replace(",", "X")
-            .replace(".", ",")
-            .replace("X", ".")
-        )
-    )
-
-
-    # --------------------------------------------------------
-    # Camada do ano
-    # --------------------------------------------------------
-
-    camada = folium.FeatureGroup(
-
-        name=f"CFEM {ano}",
-
-        show=(
-            ano == anos[-1]
-        )
-    )
-
-
-    # --------------------------------------------------------
-    # Estilo
-    # --------------------------------------------------------
-
-    def estilo(feature):
-
-        valor = feature[
-            "properties"
-        ]["CFEM_Total"]
-
-        return {
-
-            "fillColor":
-                cor_cfem(valor),
-
-            "color":
-                "#555555",
-
-            "weight":
-                0.5,
-
-            "fillOpacity":
-                0.80
-        }
-
-
-    # --------------------------------------------------------
-    # GeoJSON
-    # --------------------------------------------------------
-
-    folium.GeoJson(
-
-        geo_ano[
-            [
-                "CD_MUN",
-                "NM_MUN",
-                "Ano",
-                "CFEM_Total",
-                "CFEM_R$",
-                "geometry"
-            ]
-        ],
-
-        style_function=estilo,
-
-        highlight_function=lambda feature: {
-
-            "weight": 3,
-
-            "color": "black",
-
-            "fillOpacity": 0.9
-        },
-
-        tooltip=folium.GeoJsonTooltip(
-
-            fields=[
-                "NM_MUN",
-                "Ano",
-                "CFEM_R$"
-            ],
-
-            aliases=[
-                "Município:",
-                "Ano:",
-                "CFEM total:"
-            ],
-
-            sticky=True
-        )
-
-    ).add_to(
-        camada
-    )
-
-
-    camada.add_to(
-        mapa_cfem
-    )
-
 
 # ============================================================
-# 15. LEGENDA + CRÉDITOS
-# ============================================================
-
-template_legenda = """
-{% macro html(this, kwargs) %}
-
-<div style="
-    position: fixed;
-    bottom: 30px;
-    left: 30px;
-
-    width: 270px;
-
-    background-color: rgba(255,255,255,0.95);
-
-    border: 2px solid #777;
-    border-radius: 6px;
-
-    z-index: 9999;
-
-    padding: 12px;
-
-    font-size: 13px;
-
-    font-family: Arial, sans-serif;
-
-    line-height: 1.4;
-
-    box-shadow: 0 1px 5px rgba(0,0,0,0.4);
-">
-
-
-<div style="
-    font-size: 15px;
-    font-weight: bold;
-    margin-bottom: 8px;
-">
-    CFEM arrecadada
-</div>
-
-
-<div style="margin-bottom:3px;">
-
-<span style="
-    background:#eeeeee;
-    width:18px;
-    height:18px;
-    display:inline-block;
-    border:1px solid #999;
-    vertical-align:middle;
-"></span>
-
-&nbsp; Sem arrecadação
-
-</div>
-
-
-<div style="margin-bottom:3px;">
-
-<span style="
-    background:#ffffcc;
-    width:18px;
-    height:18px;
-    display:inline-block;
-    border:1px solid #999;
-    vertical-align:middle;
-"></span>
-
-&nbsp; Até R$ 10 mil
-
-</div>
-
-
-<div style="margin-bottom:3px;">
-
-<span style="
-    background:#ffeda0;
-    width:18px;
-    height:18px;
-    display:inline-block;
-    border:1px solid #999;
-    vertical-align:middle;
-"></span>
-
-&nbsp; R$ 10 mil – R$ 100 mil
-
-</div>
-
-
-<div style="margin-bottom:3px;">
-
-<span style="
-    background:#fed976;
-    width:18px;
-    height:18px;
-    display:inline-block;
-    border:1px solid #999;
-    vertical-align:middle;
-"></span>
-
-&nbsp; R$ 100 mil – R$ 1 milhão
-
-</div>
-
-
-<div style="margin-bottom:3px;">
-
-<span style="
-    background:#feb24c;
-    width:18px;
-    height:18px;
-    display:inline-block;
-    border:1px solid #999;
-    vertical-align:middle;
-"></span>
-
-&nbsp; R$ 1 mi – R$ 10 milhões
-
-</div>
-
-
-<div style="margin-bottom:3px;">
-
-<span style="
-    background:#f03b20;
-    width:18px;
-    height:18px;
-    display:inline-block;
-    border:1px solid #999;
-    vertical-align:middle;
-"></span>
-
-&nbsp; R$ 10 mi – R$ 100 milhões
-
-</div>
-
-
-<div>
-
-<span style="
-    background:#bd0026;
-    width:18px;
-    height:18px;
-    display:inline-block;
-    border:1px solid #999;
-    vertical-align:middle;
-"></span>
-
-&nbsp; Acima de R$ 100 milhões
-
-</div>
-
-
-<!-- CRÉDITOS -->
-
-<div style="
-    border-top: 1px solid #bbb;
-
-    margin-top: 10px;
-
-    padding-top: 8px;
-
-    font-size: 11px;
-
-    line-height: 1.45;
-">
-
-<b>Autoria:</b>
-Melissa Carvalho
-
-<br>
-
-<b>Elaboração:</b>
-13/09/2026
-
-<br>
-
-<b>Fontes:</b>
-Malha Municipal de Minas Gerais — IBGE;
-
-<br>
-
-Arrecadação da CFEM (2022–2026) — ANM.
-
-</div>
-
-
-</div>
-
-{% endmacro %}
-"""
-
-
-macro_legenda = MacroElement()
-
-macro_legenda._template = Template(
-    template_legenda
-)
-
-mapa_cfem.get_root().add_child(
-    macro_legenda
-)
-
-
-# ============================================================
-# 16. CONTROLE DE CAMADAS
+# 24. CONTROLE DOS MAPAS BASE
 # ============================================================
 
 folium.LayerControl(
-    collapsed=False
+    collapsed=True
 ).add_to(
     mapa_cfem
 )
 
 
 # ============================================================
-# 17. ENQUADRAR MINAS GERAIS
+# 25. ENQUADRAR MINAS GERAIS
 # ============================================================
 
 minx, miny, maxx, maxy = (
     municipios.total_bounds
 )
-
 
 mapa_cfem.fit_bounds(
     [
@@ -1450,7 +2380,7 @@ mapa_cfem.fit_bounds(
 
 
 # ============================================================
-# 18. SALVAR INDEX.HTML
+# 26. SALVAR INDEX.HTML
 # ============================================================
 
 print(
@@ -1463,7 +2393,7 @@ mapa_cfem.save(
 
 
 # ============================================================
-# 19. FINALIZAÇÃO
+# 27. FINALIZAÇÃO
 # ============================================================
 
 data_execucao = (
@@ -1473,13 +2403,12 @@ data_execucao = (
     )
 )
 
-
 print(
     "\n" + "=" * 60
 )
 
 print(
-    "MAPA ATUALIZADO COM SUCESSO"
+    "WEBGIS ATUALIZADO COM SUCESSO"
 )
 
 print(
@@ -1499,8 +2428,8 @@ print(
 )
 
 print(
-    f"Principais substâncias: "
-    f"{principais_substancias}"
+    f"Quantidade de substâncias: "
+    f"{len(todas_substancias)}"
 )
 
 print(
