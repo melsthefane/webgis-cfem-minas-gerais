@@ -1,16 +1,26 @@
-import pandas as pd
-import geopandas as gpd
-import folium
-import requests
 import json
-
-from io import BytesIO
 from datetime import datetime
+from io import BytesIO
+
+import folium
+import geopandas as gpd
+import pandas as pd
+import requests
 
 
 # ============================================================
 # WEBGIS CFEM - MINAS GERAIS
+# ETAPA 6
+#
+# Recursos:
+# - atualização automática dos dados da ANM
+# - filtro por ano
+# - filtro inteligente por substância
+# - busca inteligente por município
+# - zoom automático no município
+# - indicadores dinâmicos
 # ============================================================
+
 
 URL_CFEM = (
     "https://dadosabertos.anm.gov.br/CFEM/"
@@ -34,9 +44,11 @@ print("=" * 60)
 
 print("\nBaixando dados da ANM...")
 
+
 headers = {
     "User-Agent": "Mozilla/5.0"
 }
+
 
 response = requests.get(
     URL_CFEM,
@@ -44,7 +56,9 @@ response = requests.get(
     timeout=180
 )
 
+
 response.raise_for_status()
+
 
 print(
     f"Download concluído: "
@@ -58,6 +72,7 @@ print(
 
 print("\nLendo arquivo CSV...")
 
+
 cfem = pd.read_csv(
     BytesIO(response.content),
     sep=None,
@@ -65,8 +80,17 @@ cfem = pd.read_csv(
     encoding="latin1"
 )
 
-print(f"Registros encontrados: {len(cfem):,}")
-print(f"Colunas encontradas: {len(cfem.columns)}")
+
+print(
+    f"Registros encontrados: "
+    f"{len(cfem):,}"
+)
+
+
+print(
+    f"Colunas encontradas: "
+    f"{len(cfem.columns)}"
+)
 
 
 # ============================================================
@@ -81,6 +105,7 @@ cfem_mg = cfem[
     .eq("MG")
 ].copy()
 
+
 print(
     f"Registros de Minas Gerais: "
     f"{len(cfem_mg):,}"
@@ -94,9 +119,18 @@ print(
 cfem_mg["ValorRecolhido"] = (
     cfem_mg["ValorRecolhido"]
     .astype(str)
-    .str.replace(".", "", regex=False)
-    .str.replace(",", ".", regex=False)
+    .str.replace(
+        ".",
+        "",
+        regex=False
+    )
+    .str.replace(
+        ",",
+        ".",
+        regex=False
+    )
 )
+
 
 cfem_mg["ValorRecolhido"] = pd.to_numeric(
     cfem_mg["ValorRecolhido"],
@@ -130,9 +164,11 @@ cfem_mg["Ano"] = pd.to_numeric(
     errors="coerce"
 )
 
+
 cfem_mg = cfem_mg[
     cfem_mg["Ano"].notna()
 ].copy()
+
 
 cfem_mg["Ano"] = (
     cfem_mg["Ano"]
@@ -163,6 +199,7 @@ cfem_mg["Substância"] = (
     .str.strip()
 )
 
+
 cfem_mg.loc[
     cfem_mg["Substância"].eq(""),
     "Substância"
@@ -179,12 +216,15 @@ anos = sorted(
     .tolist()
 )
 
+
 if not anos:
     raise ValueError(
         "Nenhum ano foi encontrado na base da ANM."
     )
 
+
 ano_padrao = max(anos)
+
 
 print("\nAnos encontrados:")
 print(anos)
@@ -197,6 +237,7 @@ print(anos)
 print(
     "\nCalculando CFEM total por município..."
 )
+
 
 cfem_total = (
     cfem_mg
@@ -217,6 +258,7 @@ cfem_total = (
     )
 )
 
+
 cfem_total["CFEM_Total"] = (
     cfem_total["CFEM_Total"]
     .astype(float)
@@ -230,6 +272,7 @@ cfem_total["CFEM_Total"] = (
 print(
     "\nCalculando CFEM por substância..."
 )
+
 
 cfem_substancias = (
     cfem_mg
@@ -251,10 +294,12 @@ cfem_substancias = (
     )
 )
 
+
 cfem_substancias["CFEM_Total"] = (
     cfem_substancias["CFEM_Total"]
     .astype(float)
 )
+
 
 print(
     f"Registros agregados por substância: "
@@ -263,7 +308,7 @@ print(
 
 
 # ============================================================
-# 12. TODAS AS SUBSTÂNCIAS
+# 12. LISTA DE SUBSTÂNCIAS
 # ============================================================
 
 todas_substancias = sorted(
@@ -276,6 +321,7 @@ todas_substancias = sorted(
     .tolist(),
     key=lambda x: x.upper()
 )
+
 
 print(
     f"Substâncias encontradas: "
@@ -300,13 +346,16 @@ ranking_substancias = (
     )
 )
 
+
 principais_substancias = (
     ranking_substancias
     .head(10)["Substância"]
     .tolist()
 )
 
+
 print("\nPrincipais substâncias:")
+
 
 for numero, substancia in enumerate(
     principais_substancias,
@@ -324,6 +373,7 @@ for numero, substancia in enumerate(
 print(
     f"\nGerando {ARQUIVO_DADOS}..."
 )
+
 
 dados_webgis = {
 
@@ -396,13 +446,16 @@ print(
     "\nCarregando municípios..."
 )
 
+
 municipios = gpd.read_file(
     ARQUIVO_MUNICIPIOS
 )
 
+
 municipios = municipios.to_crs(
     epsg=4326
 )
+
 
 municipios["CD_MUN"] = (
     municipios["CD_MUN"]
@@ -415,6 +468,7 @@ municipios["CD_MUN"] = (
     .str.zfill(7)
 )
 
+
 municipios = municipios[
     [
         "CD_MUN",
@@ -423,6 +477,7 @@ municipios = municipios[
     ]
 ].copy()
 
+
 print(
     f"Municípios carregados: "
     f"{len(municipios)}"
@@ -430,7 +485,7 @@ print(
 
 
 # ============================================================
-# 16. DADOS DO ANO INICIAL
+# 16. PREPARAR ANO INICIAL
 # ============================================================
 
 dados_iniciais = cfem_total[
@@ -504,6 +559,7 @@ print(
     "\nCriando mapa..."
 )
 
+
 mapa_cfem = folium.Map(
 
     location=[
@@ -522,7 +578,7 @@ mapa_cfem = folium.Map(
 
 
 # ============================================================
-# 19. MAPA BASE CYCLOSM
+# 19. CYCLOSM
 # ============================================================
 
 folium.TileLayer(
@@ -551,7 +607,7 @@ folium.TileLayer(
 
 
 # ============================================================
-# 20. MAPA BASE ESRI
+# 20. ESRI WORLD TOPO
 # ============================================================
 
 folium.TileLayer(
@@ -579,7 +635,7 @@ folium.TileLayer(
 
 
 # ============================================================
-# 21. CAMADA MUNICIPAL ÚNICA
+# 21. CAMADA MUNICIPAL
 # ============================================================
 
 camada_municipios = folium.GeoJson(
@@ -595,6 +651,8 @@ camada_municipios = folium.GeoJson(
     ],
 
     name="CFEM",
+
+    control=False,
 
     style_function=lambda feature: {
 
@@ -613,18 +671,6 @@ camada_municipios = folium.GeoJson(
 
         "fillOpacity":
             0.80
-    },
-
-    highlight_function=lambda feature: {
-
-        "weight":
-            3,
-
-        "color":
-            "#111111",
-
-        "fillOpacity":
-            0.92
     }
 
 ).add_to(
@@ -640,6 +686,7 @@ nome_camada_js = (
     camada_municipios.get_name()
 )
 
+
 nome_mapa_js = (
     mapa_cfem.get_name()
 )
@@ -653,16 +700,21 @@ minx, miny, maxx, maxy = (
     municipios.total_bounds
 )
 
+
 limites_mg = [
+
     [
         float(miny),
         float(minx)
     ],
+
     [
         float(maxy),
         float(maxx)
     ]
+
 ]
+
 
 limites_mg_json = json.dumps(
     limites_mg
@@ -687,6 +739,7 @@ titulo_html = """
 </div>
 """
 
+
 mapa_cfem.get_root().html.add_child(
     folium.Element(
         titulo_html
@@ -703,17 +756,21 @@ anos_json = json.dumps(
     ensure_ascii=False
 )
 
+
 substancias_json = json.dumps(
     todas_substancias,
     ensure_ascii=False
 )
+
 
 principais_json = json.dumps(
     principais_substancias,
     ensure_ascii=False
 )
 
+
 municipios_json = json.dumps(
+
     municipios[
         [
             "CD_MUN",
@@ -726,17 +783,19 @@ municipios_json = json.dumps(
     .to_dict(
         orient="records"
     ),
+
     ensure_ascii=False
 )
 
 
 # ============================================================
-# 26. INTERFACE HTML + CSS + JAVASCRIPT
+# 26. INTERFACE HTML / CSS / JAVASCRIPT
 #
-# NÃO UTILIZAR f-string NESTE BLOCO.
+# IMPORTANTE:
+# NÃO USAR f-string NESTE BLOCO.
 # ============================================================
 
-interface_html = """
+interface_html = r"""
 <style>
 
 /* ==========================================================
@@ -744,7 +803,9 @@ interface_html = """
    ========================================================== */
 
 #titulo-webgis {
+
     position: fixed;
+
     top: 10px;
     left: 70px;
 
@@ -772,6 +833,7 @@ interface_html = """
 
 
 #titulo-webgis .titulo-principal {
+
     font-size:
         19px;
 
@@ -784,6 +846,7 @@ interface_html = """
 
 
 #titulo-webgis .titulo-secundario {
+
     font-size:
         12px;
 
@@ -800,6 +863,7 @@ interface_html = """
    ========================================================== */
 
 #painel-cfem {
+
     position:
         fixed;
 
@@ -810,7 +874,7 @@ interface_html = """
         20px;
 
     width:
-        310px;
+        330px;
 
     max-height:
         calc(100vh - 135px);
@@ -846,6 +910,7 @@ interface_html = """
 
 
 #painel-cfem h3 {
+
     margin:
         0 0 12px 0;
 
@@ -855,6 +920,7 @@ interface_html = """
 
 
 .rotulo-cfem {
+
     display:
         block;
 
@@ -879,6 +945,7 @@ interface_html = """
 #filtro-ano,
 #busca-substancia,
 #busca-municipio {
+
     width:
         100%;
 
@@ -904,6 +971,7 @@ interface_html = """
 
 #busca-substancia:focus,
 #busca-municipio:focus {
+
     outline:
         2px solid #777;
 
@@ -913,11 +981,12 @@ interface_html = """
 
 
 /* ==========================================================
-   LISTAS DE RESULTADOS
+   RESULTADOS DE BUSCA
    ========================================================== */
 
 #lista-substancias,
 #lista-municipios {
+
     display:
         none;
 
@@ -946,6 +1015,7 @@ interface_html = """
 
 .item-substancia,
 .item-municipio {
+
     padding:
         8px 9px;
 
@@ -962,18 +1032,21 @@ interface_html = """
 
 .item-substancia:hover,
 .item-municipio:hover {
+
     background:
         #eeeeee;
 }
 
 
 .item-principal {
+
     font-weight:
         bold;
 }
 
 
 .sem-resultado {
+
     padding:
         9px;
 
@@ -986,10 +1059,11 @@ interface_html = """
 
 
 /* ==========================================================
-   BOTÃO VOLTAR PARA MG
+   BOTÃO
    ========================================================== */
 
 #botao-voltar-mg {
+
     width:
         100%;
 
@@ -1020,8 +1094,130 @@ interface_html = """
 
 
 #botao-voltar-mg:hover {
+
     background:
         #e9e9e9;
+}
+
+
+/* ==========================================================
+   ETAPA 6
+   INDICADORES
+   ========================================================== */
+
+#indicadores-cfem {
+
+    margin-top:
+        13px;
+
+    padding-top:
+        10px;
+
+    border-top:
+        1px solid #ddd;
+}
+
+
+.indicadores-titulo {
+
+    font-size:
+        12px;
+
+    font-weight:
+        bold;
+
+    color:
+        #444;
+
+    margin-bottom:
+        7px;
+}
+
+
+.grade-indicadores {
+
+    display:
+        grid;
+
+    grid-template-columns:
+        1fr 1fr;
+
+    gap:
+        7px;
+}
+
+
+.cartao-indicador {
+
+    border:
+        1px solid #ddd;
+
+    border-radius:
+        6px;
+
+    background:
+        #fafafa;
+
+    padding:
+        8px;
+
+    min-height:
+        55px;
+
+    box-sizing:
+        border-box;
+}
+
+
+.cartao-indicador.total {
+
+    grid-column:
+        1 / -1;
+}
+
+
+.indicador-rotulo {
+
+    font-size:
+        10px;
+
+    color:
+        #666;
+
+    margin-bottom:
+        4px;
+}
+
+
+.indicador-valor {
+
+    font-size:
+        14px;
+
+    font-weight:
+        bold;
+
+    line-height:
+        1.2;
+
+    word-break:
+        break-word;
+}
+
+
+.indicador-detalhe {
+
+    font-size:
+        10px;
+
+    color:
+        #666;
+
+    margin-top:
+        3px;
+
+    line-height:
+        1.25;
 }
 
 
@@ -1030,6 +1226,7 @@ interface_html = """
    ========================================================== */
 
 #status-consulta {
+
     margin-top:
         12px;
 
@@ -1051,6 +1248,7 @@ interface_html = """
 
 
 #carregando-cfem {
+
     display:
         none;
 
@@ -1070,6 +1268,7 @@ interface_html = """
    ========================================================== */
 
 #legenda-cfem {
+
     position:
         fixed;
 
@@ -1113,6 +1312,7 @@ interface_html = """
 
 
 .legenda-titulo {
+
     font-size:
         14px;
 
@@ -1125,12 +1325,14 @@ interface_html = """
 
 
 .legenda-item {
+
     margin-bottom:
         4px;
 }
 
 
 .caixa-cor {
+
     display:
         inline-block;
 
@@ -1152,6 +1354,7 @@ interface_html = """
 
 
 .creditos-cfem {
+
     border-top:
         1px solid #bbb;
 
@@ -1174,6 +1377,7 @@ interface_html = """
    ========================================================== */
 
 .tooltip-cfem {
+
     font-family:
         Arial,
         sans-serif;
@@ -1193,6 +1397,7 @@ interface_html = """
 @media screen and (max-width: 768px) {
 
     #titulo-webgis {
+
         top:
             8px;
 
@@ -1208,6 +1413,7 @@ interface_html = """
 
 
     #titulo-webgis .titulo-principal {
+
         font-size:
             14px;
 
@@ -1217,12 +1423,14 @@ interface_html = """
 
 
     #titulo-webgis .titulo-secundario {
+
         display:
             none;
     }
 
 
     #painel-cfem {
+
         top:
             auto;
 
@@ -1239,7 +1447,7 @@ interface_html = """
             auto;
 
         max-height:
-            42vh;
+            46vh;
 
         padding:
             10px;
@@ -1247,6 +1455,7 @@ interface_html = """
 
 
     #painel-cfem h3 {
+
         font-size:
             14px;
 
@@ -1256,6 +1465,7 @@ interface_html = """
 
 
     .rotulo-cfem {
+
         margin:
             6px 0 4px 0;
 
@@ -1267,6 +1477,7 @@ interface_html = """
     #filtro-ano,
     #busca-substancia,
     #busca-municipio {
+
         padding:
             7px;
 
@@ -1277,12 +1488,21 @@ interface_html = """
 
     #lista-substancias,
     #lista-municipios {
+
         max-height:
             150px;
     }
 
 
+    .indicador-valor {
+
+        font-size:
+            12px;
+    }
+
+
     #legenda-cfem {
+
         top:
             65px;
 
@@ -1304,12 +1524,14 @@ interface_html = """
 
 
     .legenda-titulo {
+
         font-size:
             11px;
     }
 
 
     .caixa-cor {
+
         width:
             12px;
 
@@ -1319,12 +1541,14 @@ interface_html = """
 
 
     .creditos-cfem {
+
         display:
             none;
     }
 
 
     .leaflet-control-layers {
+
         font-size:
             10px;
     }
@@ -1335,7 +1559,7 @@ interface_html = """
 
 
 <!-- ========================================================
-     PAINEL
+     PAINEL DE CONSULTA
      ======================================================== -->
 
 <div id="painel-cfem">
@@ -1406,6 +1630,80 @@ interface_html = """
     </button>
 
 
+    <!-- ====================================================
+         ETAPA 6 - INDICADORES
+         ==================================================== -->
+
+    <div id="indicadores-cfem">
+
+        <div class="indicadores-titulo">
+            Indicadores da consulta
+        </div>
+
+
+        <div class="grade-indicadores">
+
+
+            <div class="cartao-indicador total">
+
+                <div class="indicador-rotulo">
+                    CFEM total
+                </div>
+
+                <div
+                    class="indicador-valor"
+                    id="indicador-total"
+                >
+                    R$ 0,00
+                </div>
+
+            </div>
+
+
+            <div class="cartao-indicador">
+
+                <div class="indicador-rotulo">
+                    Municípios com arrecadação
+                </div>
+
+                <div
+                    class="indicador-valor"
+                    id="indicador-municipios"
+                >
+                    0
+                </div>
+
+            </div>
+
+
+            <div class="cartao-indicador">
+
+                <div class="indicador-rotulo">
+                    Maior arrecadação municipal
+                </div>
+
+                <div
+                    class="indicador-valor"
+                    id="indicador-maior-valor"
+                >
+                    R$ 0,00
+                </div>
+
+                <div
+                    class="indicador-detalhe"
+                    id="indicador-maior-municipio"
+                >
+                    —
+                </div>
+
+            </div>
+
+
+        </div>
+
+    </div>
+
+
     <div id="status-consulta">
 
         <b>
@@ -1444,65 +1742,86 @@ interface_html = """
 
 
     <div class="legenda-item">
+
         <span
             class="caixa-cor"
             style="background:#eeeeee;"
         ></span>
+
         Sem arrecadação
+
     </div>
 
 
     <div class="legenda-item">
+
         <span
             class="caixa-cor"
             style="background:#ffffcc;"
         ></span>
+
         Até R$ 10 mil
+
     </div>
 
 
     <div class="legenda-item">
+
         <span
             class="caixa-cor"
             style="background:#ffeda0;"
         ></span>
+
         R$ 10 mil – R$ 100 mil
+
     </div>
 
 
     <div class="legenda-item">
+
         <span
             class="caixa-cor"
             style="background:#fed976;"
         ></span>
+
         R$ 100 mil – R$ 1 milhão
+
     </div>
 
 
     <div class="legenda-item">
+
         <span
             class="caixa-cor"
             style="background:#feb24c;"
         ></span>
+
         R$ 1 mi – R$ 10 milhões
+
     </div>
 
 
     <div class="legenda-item">
+
         <span
             class="caixa-cor"
             style="background:#f03b20;"
         ></span>
+
         R$ 10 mi – R$ 100 milhões
+
     </div>
 
 
     <div class="legenda-item">
+
         <span
             class="caixa-cor"
             style="background:#bd0026;"
         ></span>
+
         Acima de R$ 100 milhões
+
     </div>
 
 
@@ -1535,6 +1854,7 @@ interface_html = """
 document.addEventListener(
     "DOMContentLoaded",
     async function() {
+
 
         /* ==================================================
            CONFIGURAÇÕES
@@ -1585,7 +1905,7 @@ document.addEventListener(
 
 
         /* ==================================================
-           ELEMENTOS DA INTERFACE
+           ELEMENTOS
            ================================================== */
 
         const filtroAno =
@@ -1643,6 +1963,34 @@ document.addEventListener(
 
 
         /* ==================================================
+           ELEMENTOS DOS INDICADORES
+           ================================================== */
+
+        const indicadorTotal =
+            document.getElementById(
+                "indicador-total"
+            );
+
+
+        const indicadorMunicipios =
+            document.getElementById(
+                "indicador-municipios"
+            );
+
+
+        const indicadorMaiorValor =
+            document.getElementById(
+                "indicador-maior-valor"
+            );
+
+
+        const indicadorMaiorMunicipio =
+            document.getElementById(
+                "indicador-maior-municipio"
+            );
+
+
+        /* ==================================================
            NORMALIZAÇÃO DE TEXTO
            ================================================== */
 
@@ -1673,11 +2021,13 @@ document.addEventListener(
             ).toLocaleString(
                 "pt-BR",
                 {
+
                     style:
                         "currency",
 
                     currency:
                         "BRL"
+
                 }
             );
 
@@ -1685,7 +2035,7 @@ document.addEventListener(
 
 
         /* ==================================================
-           CORES
+           COR CFEM
            ================================================== */
 
         function corCFEM(valor) {
@@ -1743,7 +2093,9 @@ document.addEventListener(
                 !layer.feature ||
                 !layer.feature.properties
             ) {
+
                 return;
+
             }
 
 
@@ -1779,7 +2131,7 @@ document.addEventListener(
 
 
         /* ==================================================
-           ESTILO DO MUNICÍPIO SELECIONADO
+           DESTAQUE DO MUNICÍPIO
            ================================================== */
 
         function aplicarDestaqueMunicipio() {
@@ -1787,7 +2139,9 @@ document.addEventListener(
             if (
                 !camadaMunicipioSelecionado
             ) {
+
                 return;
+
             }
 
 
@@ -1888,6 +2242,8 @@ document.addEventListener(
                 "";
 
 
+            /* TODAS */
+
             const itemTodas =
                 document.createElement(
                     "div"
@@ -1929,6 +2285,14 @@ document.addEventListener(
             );
 
 
+            /* TERMOS DE PESQUISA */
+
+            const termos =
+                busca
+                .split(/\s+/)
+                .filter(Boolean);
+
+
             let resultados =
                 substancias.filter(
                     function(substancia) {
@@ -1938,15 +2302,27 @@ document.addEventListener(
                         }
 
 
-                        return normalizar(
-                            substancia
-                        ).includes(
-                            busca
+                        const nome =
+                            normalizar(
+                                substancia
+                            );
+
+
+                        return termos.every(
+                            function(termo) {
+
+                                return nome.includes(
+                                    termo
+                                );
+
+                            }
                         );
 
                     }
                 );
 
+
+            /* PRINCIPAIS PRIMEIRO */
 
             if (!busca) {
 
@@ -1965,7 +2341,9 @@ document.addEventListener(
                             posicaoA !== -1 &&
                             posicaoB === -1
                         ) {
+
                             return -1;
+
                         }
 
 
@@ -1973,7 +2351,9 @@ document.addEventListener(
                             posicaoA === -1 &&
                             posicaoB !== -1
                         ) {
+
                             return 1;
+
                         }
 
 
@@ -2111,9 +2491,15 @@ document.addEventListener(
 
                 }
 
+                else {
+
+                    buscaSubstancia.select();
+
+                }
+
 
                 mostrarListaSubstancias(
-                    buscaSubstancia.value
+                    ""
                 );
 
             }
@@ -2160,14 +2546,30 @@ document.addEventListener(
             }
 
 
+            const termos =
+                busca
+                .split(/\s+/)
+                .filter(Boolean);
+
+
             const resultados =
                 municipiosBusca.filter(
                     function(municipio) {
 
-                        return normalizar(
-                            municipio.NM_MUN
-                        ).includes(
-                            busca
+                        const nome =
+                            normalizar(
+                                municipio.NM_MUN
+                            );
+
+
+                        return termos.every(
+                            function(termo) {
+
+                                return nome.includes(
+                                    termo
+                                );
+
+                            }
                         );
 
                     }
@@ -2276,7 +2678,9 @@ document.addEventListener(
                         !layer.feature ||
                         !layer.feature.properties
                     ) {
+
                         return;
+
                     }
 
 
@@ -2310,7 +2714,9 @@ document.addEventListener(
             if (
                 !camadaMunicipioSelecionado
             ) {
+
                 return;
+
             }
 
 
@@ -2342,10 +2748,6 @@ document.addEventListener(
 
             }
 
-
-            /*
-            Abrir tooltip somente se ele já existir.
-            */
 
             if (
                 camadaMunicipioSelecionado
@@ -2380,6 +2782,9 @@ document.addEventListener(
                     buscaMunicipio.value
                 ) {
 
+                    buscaMunicipio.select();
+
+
                     mostrarListaMunicipios(
                         buscaMunicipio.value
                     );
@@ -2391,7 +2796,7 @@ document.addEventListener(
 
 
         /* ==================================================
-           FECHAR LISTAS AO CLICAR FORA
+           FECHAR LISTAS
            ================================================== */
 
         document.addEventListener(
@@ -2432,7 +2837,7 @@ document.addEventListener(
 
 
         /* ==================================================
-           VOLTAR PARA TODO O ESTADO
+           VOLTAR PARA MINAS GERAIS
            ================================================== */
 
         botaoVoltarMG.addEventListener(
@@ -2471,7 +2876,7 @@ document.addEventListener(
 
 
         /* ==================================================
-           CARREGAR dados_cfem.json
+           CARREGAR JSON
            ================================================== */
 
         try {
@@ -2491,7 +2896,9 @@ document.addEventListener(
                 );
 
 
-            if (!resposta.ok) {
+            if (
+                !resposta.ok
+            ) {
 
                 throw new Error(
                     "Erro HTTP " +
@@ -2532,13 +2939,154 @@ document.addEventListener(
 
 
         /* ==================================================
+           ETAPA 6
+           CALCULAR INDICADORES
+           ================================================== */
+
+        function atualizarIndicadores(
+            valoresMunicipios
+        ) {
+
+            let total =
+                0;
+
+
+            let quantidadeMunicipios =
+                0;
+
+
+            let maiorValor =
+                0;
+
+
+            let maiorCodigo =
+                null;
+
+
+            valoresMunicipios.forEach(
+                function(valor, codigo) {
+
+                    const numero =
+                        Number(
+                            valor || 0
+                        );
+
+
+                    total +=
+                        numero;
+
+
+                    if (
+                        numero > 0
+                    ) {
+
+                        quantidadeMunicipios +=
+                            1;
+
+
+                        if (
+                            numero >
+                            maiorValor
+                        ) {
+
+                            maiorValor =
+                                numero;
+
+
+                            maiorCodigo =
+                                String(
+                                    codigo
+                                );
+
+                        }
+
+                    }
+
+                }
+            );
+
+
+            /* ----------------------------------------------
+               DESCOBRIR NOME DO MAIOR MUNICÍPIO
+               ---------------------------------------------- */
+
+            let maiorMunicipio =
+                "—";
+
+
+            if (
+                maiorCodigo !== null
+            ) {
+
+                const encontrado =
+                    municipiosBusca.find(
+                        function(municipio) {
+
+                            return (
+                                String(
+                                    municipio.CD_MUN
+                                )
+                                ===
+                                maiorCodigo
+                            );
+
+                        }
+                    );
+
+
+                if (
+                    encontrado
+                ) {
+
+                    maiorMunicipio =
+                        encontrado.NM_MUN;
+
+                }
+
+            }
+
+
+            /* ----------------------------------------------
+               ATUALIZAR INTERFACE
+               ---------------------------------------------- */
+
+            indicadorTotal.textContent =
+                moeda(
+                    total
+                );
+
+
+            indicadorMunicipios.textContent =
+                quantidadeMunicipios
+                .toLocaleString(
+                    "pt-BR"
+                );
+
+
+            indicadorMaiorValor.textContent =
+                moeda(
+                    maiorValor
+                );
+
+
+            indicadorMaiorMunicipio.textContent =
+                maiorMunicipio;
+
+        }
+
+
+        /* ==================================================
            ATUALIZAR MAPA
            ================================================== */
 
         function atualizarMapa() {
 
-            if (!dadosCFEM) {
+            if (
+                !dadosCFEM
+            ) {
+
                 return;
+
             }
 
 
@@ -2576,7 +3124,8 @@ document.addEventListener(
                         if (
                             Number(
                                 item.Ano
-                            ) === ano
+                            ) ===
+                            ano
                         ) {
 
                             valoresMunicipios.set(
@@ -2610,7 +3159,8 @@ document.addEventListener(
                         if (
                             Number(
                                 item.Ano
-                            ) === ano
+                            ) ===
+                            ano
                             &&
                             item["Substância"] ===
                             substanciaSelecionada
@@ -2635,7 +3185,7 @@ document.addEventListener(
 
 
             /* ----------------------------------------------
-               ATUALIZAR POLÍGONOS E TOOLTIPS
+               ATUALIZAR POLÍGONOS
                ---------------------------------------------- */
 
             camadaMunicipios.eachLayer(
@@ -2645,7 +3195,9 @@ document.addEventListener(
                         !layer.feature ||
                         !layer.feature.properties
                     ) {
+
                         return;
+
                     }
 
 
@@ -2734,14 +3286,26 @@ document.addEventListener(
                         layer.bindTooltip(
                             conteudo,
                             {
+
                                 sticky:
                                     true
+
                             }
                         );
 
                     }
 
                 }
+            );
+
+
+            /* ==============================================
+               ETAPA 6
+               ATUALIZAR INDICADORES
+               ============================================== */
+
+            atualizarIndicadores(
+                valoresMunicipios
             );
 
 
@@ -2820,35 +3384,42 @@ interface_html = interface_html.replace(
     nome_mapa_js
 )
 
+
 interface_html = interface_html.replace(
     "__CAMADA_MUNICIPIOS__",
     nome_camada_js
 )
+
 
 interface_html = interface_html.replace(
     "__ANOS_JSON__",
     anos_json
 )
 
+
 interface_html = interface_html.replace(
     "__SUBSTANCIAS_JSON__",
     substancias_json
 )
+
 
 interface_html = interface_html.replace(
     "__PRINCIPAIS_JSON__",
     principais_json
 )
 
+
 interface_html = interface_html.replace(
     "__MUNICIPIOS_JSON__",
     municipios_json
 )
 
+
 interface_html = interface_html.replace(
     "__LIMITES_MG__",
     limites_mg_json
 )
+
 
 interface_html = interface_html.replace(
     "__ANO_PADRAO__",
@@ -2899,6 +3470,7 @@ print(
     "\nSalvando mapa..."
 )
 
+
 mapa_cfem.save(
     ARQUIVO_SAIDA
 )
@@ -2915,39 +3487,48 @@ data_execucao = (
     )
 )
 
+
 print(
     "\n" + "=" * 60
 )
+
 
 print(
     "WEBGIS ATUALIZADO COM SUCESSO"
 )
 
+
 print(
     f"Mapa: {ARQUIVO_SAIDA}"
 )
+
 
 print(
     f"Dados: {ARQUIVO_DADOS}"
 )
 
+
 print(
     f"Execução: {data_execucao}"
 )
 
+
 print(
     f"Anos: {anos}"
 )
+
 
 print(
     f"Quantidade de municípios: "
     f"{len(municipios)}"
 )
 
+
 print(
     f"Quantidade de substâncias: "
     f"{len(todas_substancias)}"
 )
+
 
 print(
     "=" * 60
