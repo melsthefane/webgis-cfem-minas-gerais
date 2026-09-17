@@ -1070,60 +1070,89 @@ body {
 
 
 /* ==========================================================
-   FILTRO DE MESES
+   FILTRO DE MESES - COMPACTO / EXPANSÍVEL
    ========================================================== */
 
 #bloco-periodo {
-
     margin-top:10px;
 }
 
 #controle-periodo {
-
     display:flex;
-
     gap:6px;
 }
 
 .botao-periodo {
-
     flex:1;
-
     min-height:38px;
-
     border:1px solid #999;
-
     border-radius:5px;
-
     background:#f5f5f5;
-
     cursor:pointer;
-
     font-size:11px;
 }
 
+.botao-periodo:hover {
+    background:#e9e9e9;
+}
+
 .botao-periodo.ativo {
-
     background:#333;
-
     color:#fff;
-
     border-color:#333;
 }
 
+#periodo-compacto {
+    display:none;
+    margin-top:7px;
+    padding:8px 9px;
+    border:1px solid #ccc;
+    border-radius:6px;
+    background:#fafafa;
+}
+
+#periodo-compacto.visivel {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+}
+
+#periodo-compacto-texto {
+    min-width:0;
+    font-size:11px;
+    line-height:1.35;
+    color:#555;
+}
+
+#periodo-compacto-texto strong {
+    display:block;
+    margin-top:2px;
+    font-size:12px;
+    color:#222;
+}
+
+#botao-alterar-meses {
+    flex-shrink:0;
+    min-height:32px;
+    padding:5px 10px;
+    border:1px solid #999;
+    border-radius:4px;
+    background:#fff;
+    cursor:pointer;
+    font-size:10px;
+}
+
+#botao-alterar-meses:hover {
+    background:#eee;
+}
 
 #painel-meses {
-
     display:none;
-
     margin-top:7px;
-
     padding:9px;
-
     border:1px solid #ccc;
-
     border-radius:6px;
-
     background:#fafafa;
 }
 
@@ -1131,94 +1160,96 @@ body {
     display:block;
 }
 
-
 .grade-meses {
-
     display:grid;
-
-    grid-template-columns:
-        1fr 1fr 1fr;
-
+    grid-template-columns:1fr 1fr 1fr;
     gap:5px;
 }
 
-
 .item-mes {
-
     display:flex;
-
     align-items:center;
-
     gap:5px;
-
     min-height:31px;
-
     padding:4px 5px;
-
     box-sizing:border-box;
-
     background:#fff;
-
     border:1px solid #ddd;
-
     border-radius:4px;
-
     cursor:pointer;
-
     font-size:10px;
+    user-select:none;
+}
+
+.item-mes:hover {
+    background:#f2f2f2;
 }
 
 .item-mes input {
-
     margin:0;
 }
 
-
 .acoes-meses {
-
-    display:flex;
-
+    display:grid;
+    grid-template-columns:1fr 1fr;
     gap:6px;
-
     margin-top:8px;
 }
 
-
 .botao-meses {
-
-    flex:1;
-
     min-height:32px;
-
     border:1px solid #aaa;
-
     border-radius:4px;
-
     background:#fff;
-
     cursor:pointer;
-
     font-size:10px;
 }
 
+.botao-meses:hover {
+    background:#eee;
+}
+
+#botao-concluir-meses {
+    grid-column:1/-1;
+    min-height:36px;
+    border:1px solid #333;
+    border-radius:4px;
+    background:#333;
+    color:#fff;
+    cursor:pointer;
+    font-size:11px;
+    font-weight:bold;
+}
+
+#botao-concluir-meses:hover {
+    background:#222;
+}
 
 #resumo-meses {
-
     margin-top:7px;
-
     padding:6px 7px;
-
     background:#fff;
-
     border:1px solid #ddd;
-
     border-radius:4px;
-
     font-size:10px;
-
     color:#555;
-
     line-height:1.4;
+}
+
+#aviso-meses {
+    display:none;
+    margin-top:6px;
+    padding:7px;
+    border:1px solid #e2cf8a;
+    border-radius:4px;
+    background:#fff3cd;
+    color:#665400;
+    font-size:10px;
+    line-height:1.35;
+}
+
+#aviso-meses.visivel {
+    display:block;
 }
 
 
@@ -1944,41 +1975,71 @@ td:first-child {
     }
 
 
-    /* MESES */
+    /* ======================================================
+       PERÍODO / MESES - MOBILE
+       ====================================================== */
 
-    .grade-meses {
-
-        grid-template-columns:
-            1fr 1fr;
+    #controle-periodo {
+        gap:7px;
     }
 
-
-    .item-mes {
-
-        min-height:44px;
-
+    .botao-periodo {
+        min-height:46px;
         font-size:13px;
     }
 
-
-    .item-mes input {
-
-        width:18px;
-
-        height:18px;
+    #periodo-compacto {
+        padding:10px;
     }
 
-
-    .botao-meses {
-
-        min-height:42px;
-
+    #periodo-compacto-texto {
         font-size:12px;
     }
 
+    #periodo-compacto-texto strong {
+        font-size:14px;
+    }
 
-    #resumo-meses {
+    #botao-alterar-meses {
+        min-height:40px;
+        padding:7px 11px;
+        font-size:12px;
+    }
 
+    #painel-meses {
+        padding:9px;
+    }
+
+    .grade-meses {
+        grid-template-columns:
+            1fr 1fr;
+        gap:6px;
+    }
+
+    .item-mes {
+        min-height:44px;
+        padding:7px;
+        font-size:13px;
+    }
+
+    .item-mes input {
+        width:18px;
+        height:18px;
+    }
+
+    .botao-meses {
+        min-height:42px;
+        font-size:12px;
+    }
+
+    #botao-concluir-meses {
+        min-height:46px;
+        font-size:13px;
+    }
+
+    #resumo-meses,
+    #aviso-meses {
+        padding:8px;
         font-size:12px;
     }
 
@@ -2304,109 +2365,43 @@ Selecionar meses
 
 </div>
 
+<div id="periodo-compacto">
+
+<div id="periodo-compacto-texto">
+Período selecionado
+
+<strong id="periodo-compacto-valor">
+Ano completo
+</strong>
+
+</div>
+
+<button
+    id="botao-alterar-meses"
+    type="button">
+Alterar meses
+</button>
+
+</div>
 
 <div id="painel-meses">
 
 <div class="grade-meses">
 
-<label class="item-mes">
-<input
-    type="checkbox"
-    class="checkbox-mes"
-    value="1">
-Janeiro
-</label>
-
-<label class="item-mes">
-<input
-    type="checkbox"
-    class="checkbox-mes"
-    value="2">
-Fevereiro
-</label>
-
-<label class="item-mes">
-<input
-    type="checkbox"
-    class="checkbox-mes"
-    value="3">
-Março
-</label>
-
-<label class="item-mes">
-<input
-    type="checkbox"
-    class="checkbox-mes"
-    value="4">
-Abril
-</label>
-
-<label class="item-mes">
-<input
-    type="checkbox"
-    class="checkbox-mes"
-    value="5">
-Maio
-</label>
-
-<label class="item-mes">
-<input
-    type="checkbox"
-    class="checkbox-mes"
-    value="6">
-Junho
-</label>
-
-<label class="item-mes">
-<input
-    type="checkbox"
-    class="checkbox-mes"
-    value="7">
-Julho
-</label>
-
-<label class="item-mes">
-<input
-    type="checkbox"
-    class="checkbox-mes"
-    value="8">
-Agosto
-</label>
-
-<label class="item-mes">
-<input
-    type="checkbox"
-    class="checkbox-mes"
-    value="9">
-Setembro
-</label>
-
-<label class="item-mes">
-<input
-    type="checkbox"
-    class="checkbox-mes"
-    value="10">
-Outubro
-</label>
-
-<label class="item-mes">
-<input
-    type="checkbox"
-    class="checkbox-mes"
-    value="11">
-Novembro
-</label>
-
-<label class="item-mes">
-<input
-    type="checkbox"
-    class="checkbox-mes"
-    value="12">
-Dezembro
-</label>
+<label class="item-mes"><input type="checkbox" class="checkbox-mes" value="1">Janeiro</label>
+<label class="item-mes"><input type="checkbox" class="checkbox-mes" value="2">Fevereiro</label>
+<label class="item-mes"><input type="checkbox" class="checkbox-mes" value="3">Março</label>
+<label class="item-mes"><input type="checkbox" class="checkbox-mes" value="4">Abril</label>
+<label class="item-mes"><input type="checkbox" class="checkbox-mes" value="5">Maio</label>
+<label class="item-mes"><input type="checkbox" class="checkbox-mes" value="6">Junho</label>
+<label class="item-mes"><input type="checkbox" class="checkbox-mes" value="7">Julho</label>
+<label class="item-mes"><input type="checkbox" class="checkbox-mes" value="8">Agosto</label>
+<label class="item-mes"><input type="checkbox" class="checkbox-mes" value="9">Setembro</label>
+<label class="item-mes"><input type="checkbox" class="checkbox-mes" value="10">Outubro</label>
+<label class="item-mes"><input type="checkbox" class="checkbox-mes" value="11">Novembro</label>
+<label class="item-mes"><input type="checkbox" class="checkbox-mes" value="12">Dezembro</label>
 
 </div>
-
 
 <div class="acoes-meses">
 
@@ -2424,11 +2419,20 @@ Todos
 Limpar
 </button>
 
+<button
+    id="botao-concluir-meses"
+    type="button">
+Aplicar período
+</button>
+
 </div>
 
-
 <div id="resumo-meses">
-Ano completo
+Todos os meses
+</div>
+
+<div id="aviso-meses">
+Selecione pelo menos um mês antes de aplicar o período.
 </div>
 
 </div>
@@ -3545,11 +3549,39 @@ function aplicarDestaque() {
    FUNÇÕES DE PERÍODO
    ========================================================== */
 
-function obterMesesAtivos() {
+const periodoCompacto =
+document.getElementById(
+    "periodo-compacto"
+);
 
-    /*
-       Ano completo.
-    */
+const periodoCompactoValor =
+document.getElementById(
+    "periodo-compacto-valor"
+);
+
+const botaoAlterarMeses =
+document.getElementById(
+    "botao-alterar-meses"
+);
+
+const botaoConcluirMeses =
+document.getElementById(
+    "botao-concluir-meses"
+);
+
+const avisoMeses =
+document.getElementById(
+    "aviso-meses"
+);
+
+/*
+   mesesSelecionados = período efetivamente aplicado.
+   mesesEmEdicao = seleção temporária do editor.
+*/
+let mesesEmEdicao = null;
+
+
+function obterMesesAtivos() {
 
     if (
         mesesSelecionados === null
@@ -3591,7 +3623,6 @@ compacto=false
 
     }
 
-
     const meses =
         mesesSelecionados
         .slice()
@@ -3599,33 +3630,25 @@ compacto=false
             (a,b) => a-b
         );
 
-
-    if (meses.length === 12) {
-
-        return "Ano completo";
-
-    }
-
-
-    if (meses.length === 1) {
+    if (
+        meses.length === 12
+    ) {
 
         return compacto
-        ?
-        abreviacoesMeses[
-            meses[0]
-        ]
-        :
-        nomesMeses[
-            meses[0]
-        ];
+            ? "Jan–Dez"
+            : "Todos os meses";
 
     }
 
+    if (
+        meses.length === 1
+    ) {
 
-    /*
-       Se forem meses consecutivos:
-       Jan–Mar, Abr–Jul etc.
-    */
+        return compacto
+            ? abreviacoesMeses[meses[0]]
+            : nomesMeses[meses[0]];
+
+    }
 
     let consecutivos = true;
 
@@ -3637,51 +3660,161 @@ compacto=false
 
         if (
             meses[i] !==
-            meses[i-1] + 1
+            meses[i - 1] + 1
         ) {
 
             consecutivos = false;
-
             break;
 
         }
 
     }
 
-
     if (consecutivos) {
 
         return (
-            abreviacoesMeses[
-                meses[0]
-            ]
+            abreviacoesMeses[meses[0]]
             +
             "–"
             +
             abreviacoesMeses[
-                meses[
-                    meses.length - 1
-                ]
+                meses[meses.length - 1]
             ]
         );
 
     }
 
+    return meses
+        .map(
+            m => abreviacoesMeses[m]
+        )
+        .join(" + ");
+
+}
+
+
+function textoMesesEmEdicao() {
+
+    if (
+        !mesesEmEdicao ||
+        mesesEmEdicao.length === 0
+    ) {
+
+        return "Nenhum mês selecionado";
+
+    }
+
+    const meses =
+        mesesEmEdicao
+        .slice()
+        .sort(
+            (a,b) => a-b
+        );
+
+    if (
+        meses.length === 12
+    ) {
+
+        return "Todos os meses";
+
+    }
+
+    if (
+        meses.length === 1
+    ) {
+
+        return nomesMeses[
+            meses[0]
+        ];
+
+    }
+
+    let consecutivos = true;
+
+    for (
+        let i = 1;
+        i < meses.length;
+        i++
+    ) {
+
+        if (
+            meses[i] !==
+            meses[i - 1] + 1
+        ) {
+
+            consecutivos = false;
+            break;
+
+        }
+
+    }
+
+    if (consecutivos) {
+
+        return (
+            abreviacoesMeses[meses[0]]
+            +
+            "–"
+            +
+            abreviacoesMeses[
+                meses[meses.length - 1]
+            ]
+        );
+
+    }
 
     return meses
-    .map(
-        m =>
-        abreviacoesMeses[m]
-    )
-    .join(" + ");
+        .map(
+            m => abreviacoesMeses[m]
+        )
+        .join(" + ");
 
 }
 
 
 function atualizarResumoMeses() {
 
-    resumoMeses.textContent =
+    const texto =
         textoPeriodo(false);
+
+    periodoCompactoValor
+    .textContent =
+        texto;
+
+    if (
+        painelMeses.classList
+        .contains("aberto")
+    ) {
+
+        resumoMeses.textContent =
+            textoMesesEmEdicao();
+
+    }
+
+    else {
+
+        resumoMeses.textContent =
+            texto;
+
+    }
+
+}
+
+
+function sincronizarCheckboxes() {
+
+    const meses =
+        mesesEmEdicao || [];
+
+    checkboxesMeses.forEach(
+    function(check) {
+
+        check.checked =
+            meses.includes(
+                Number(check.value)
+            );
+
+    });
 
 }
 
@@ -3689,14 +3822,14 @@ function atualizarResumoMeses() {
 function ativarAnoCompleto() {
 
     mesesSelecionados = null;
+    mesesEmEdicao = null;
 
     checkboxesMeses.forEach(
-        function(check) {
+    function(check) {
 
-            check.checked = false;
+        check.checked = false;
 
-        }
-    );
+    });
 
     botaoAnoCompleto
     .classList.add(
@@ -3711,6 +3844,16 @@ function ativarAnoCompleto() {
     painelMeses
     .classList.remove(
         "aberto"
+    );
+
+    periodoCompacto
+    .classList.remove(
+        "visivel"
+    );
+
+    avisoMeses
+    .classList.remove(
+        "visivel"
     );
 
     atualizarResumoMeses();
@@ -3722,7 +3865,7 @@ function ativarAnoCompleto() {
 }
 
 
-function ativarSelecaoMeses() {
+function abrirEditorMeses() {
 
     botaoAnoCompleto
     .classList.remove(
@@ -3734,38 +3877,84 @@ function ativarSelecaoMeses() {
         "ativo"
     );
 
-    painelMeses
-    .classList.add(
-        "aberto"
-    );
-
-
-    /*
-       Ao entrar pela primeira vez
-       na seleção mensal, começa
-       com todos os meses marcados.
-    */
-
     if (
         mesesSelecionados === null
     ) {
 
-        mesesSelecionados =
+        mesesEmEdicao =
             [
                 1,2,3,4,5,6,
                 7,8,9,10,11,12
             ];
 
-        checkboxesMeses
-        .forEach(
-            function(check) {
+    }
 
-                check.checked = true;
+    else {
 
-            }
-        );
+        mesesEmEdicao =
+            mesesSelecionados.slice();
 
     }
+
+    sincronizarCheckboxes();
+
+    periodoCompacto
+    .classList.remove(
+        "visivel"
+    );
+
+    painelMeses
+    .classList.add(
+        "aberto"
+    );
+
+    avisoMeses
+    .classList.remove(
+        "visivel"
+    );
+
+    atualizarResumoMeses();
+
+}
+
+
+function concluirSelecaoMeses() {
+
+    if (
+        !mesesEmEdicao ||
+        mesesEmEdicao.length === 0
+    ) {
+
+        avisoMeses
+        .classList.add(
+            "visivel"
+        );
+
+        return;
+
+    }
+
+    mesesSelecionados =
+        mesesEmEdicao
+        .slice()
+        .sort(
+            (a,b) => a-b
+        );
+
+    avisoMeses
+    .classList.remove(
+        "visivel"
+    );
+
+    painelMeses
+    .classList.remove(
+        "aberto"
+    );
+
+    periodoCompacto
+    .classList.add(
+        "visivel"
+    );
 
     atualizarResumoMeses();
 
@@ -3787,7 +3976,23 @@ function() {
 botaoSelecionarMeses.onclick =
 function() {
 
-    ativarSelecaoMeses();
+    abrirEditorMeses();
+
+};
+
+
+botaoAlterarMeses.onclick =
+function() {
+
+    abrirEditorMeses();
+
+};
+
+
+botaoConcluirMeses.onclick =
+function() {
+
+    concluirSelecaoMeses();
 
 };
 
@@ -3799,37 +4004,25 @@ function(check) {
         "change",
         function() {
 
-            mesesSelecionados =
+            mesesEmEdicao =
                 checkboxesMeses
                 .filter(
                     c => c.checked
                 )
                 .map(
-                    c =>
-                    Number(c.value)
+                    c => Number(c.value)
                 )
                 .sort(
                     (a,b) => a-b
                 );
 
-
-            botaoAnoCompleto
-            .classList.remove(
-                "ativo"
+            avisoMeses
+            .classList.toggle(
+                "visivel",
+                mesesEmEdicao.length === 0
             );
-
-            botaoSelecionarMeses
-            .classList.add(
-                "ativo"
-            );
-
 
             atualizarResumoMeses();
-
-
-            if (dadosCFEM) {
-                atualizarMapa();
-            }
 
         }
     );
@@ -3840,26 +4033,20 @@ function(check) {
 selecionarTodosMeses.onclick =
 function() {
 
-    mesesSelecionados =
+    mesesEmEdicao =
         [
             1,2,3,4,5,6,
             7,8,9,10,11,12
         ];
 
-    checkboxesMeses
-    .forEach(
-        function(check) {
+    sincronizarCheckboxes();
 
-            check.checked = true;
-
-        }
+    avisoMeses
+    .classList.remove(
+        "visivel"
     );
 
     atualizarResumoMeses();
-
-    if (dadosCFEM) {
-        atualizarMapa();
-    }
 
 };
 
@@ -3867,22 +4054,16 @@ function() {
 limparMeses.onclick =
 function() {
 
-    mesesSelecionados = [];
+    mesesEmEdicao = [];
 
-    checkboxesMeses
-    .forEach(
-        function(check) {
+    sincronizarCheckboxes();
 
-            check.checked = false;
-
-        }
+    avisoMeses
+    .classList.add(
+        "visivel"
     );
 
     atualizarResumoMeses();
-
-    if (dadosCFEM) {
-        atualizarMapa();
-    }
 
 };
 
