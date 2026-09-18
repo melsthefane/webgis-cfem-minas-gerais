@@ -1,6 +1,6 @@
 # ============================================================
 # PAINEL DA MINERAÇÃO | MINAS GERAIS
-# V4 - CFEM + SIGMINE + SCM + WEBGIS + EXPORTAÇÃO GIS
+# V5 - CFEM + SIGMINE + SCM + WEBGIS + EXPORTAÇÃO GIS
 # ============================================================
 
 import io
@@ -2691,22 +2691,25 @@ elif pagina == "🗺️ Mapa Minerário":
         # PERFORMANCE
         # ----------------------------------------------------
 
-        if len(mapa_dados) > 12000:
+        LIMITE_MAPA = 12000
+        total_encontrado = len(mapa_dados)
 
-            st.info(
-                "O resultado possui mais de 12.000 feições. "
-                "O mapa exibe uma amostra para manter a "
-                "navegação responsiva. Use os filtros para "
-                "visualizar todas as feições de uma área "
-                "ou processo específico."
-            )
+        if total_encontrado > LIMITE_MAPA:
 
             mapa_exibicao = (
                 mapa_dados.sample(
-                    12000,
+                    LIMITE_MAPA,
                     random_state=42
                 )
                 .copy()
+            )
+
+            st.info(
+                f"Foram encontrados {inteiro_br(total_encontrado)} processos/feições "
+                f"para os filtros atuais. Para preservar o desempenho do WebGIS, "
+                f"{inteiro_br(len(mapa_exibicao))} feições estão renderizadas no mapa. "
+                "Os indicadores continuam considerando o conjunto completo. "
+                "Use município, fase, substância ou número do processo para detalhar."
             )
 
         else:
