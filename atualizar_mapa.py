@@ -1,6001 +1,3973 @@
-import json
+# ============================================================
+# PAINEL DA MINERAÇÃO | MINAS GERAIS
+# V4 - CFEM + SIGMINE + SCM + WEBGIS + EXPORTAÇÃO GIS
+# ============================================================
+
+import io
+import re
+import zipfile
+import tempfile
+import unicodedata
+from pathlib import Path
 from datetime import datetime
-from email.utils import parsedate_to_datetime
-from io import BytesIO
 
-import folium
-import geopandas as gpd
-import pandas as pd
 import requests
+import pandas as pd
+import streamlit as st
+import plotly.express as px
+import geopandas as gpd
+import folium
+
+from folium.plugins import Fullscreen
+from streamlit_folium import st_folium
 
 
 # ============================================================
-# WEBGIS CFEM - MINAS GERAIS
-# ETAPA 10
-# RESPONSIVIDADE + FILTRO DE UM OU MÚLTIPLOS MESES
+# 1. CONFIGURAÇÃO DA PÁGINA
 # ============================================================
 
-URL_CFEM = (
-    "https://dadosabertos.anm.gov.br/CFEM/"
-    "CFEM_Arrecadacao_2022_2026.csv"
+st.set_page_config(
+    page_title="Painel da Mineração | Minas Gerais",
+    page_icon="⛏️",
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
 
-ARQUIVO_MUNICIPIOS = "municipios_mg.geojson"
-ARQUIVO_SAIDA = "index.html"
-ARQUIVO_DADOS = "dados_cfem.json"
-
-print("=" * 70)
-print("WEBGIS CFEM - MINAS GERAIS")
-print("RESPONSIVIDADE + FILTRO MENSAL")
-print("=" * 70)
-
 
 # ============================================================
-# 1. DOWNLOAD ANM
+# 2. FONTES OFICIAIS ANM
 # ============================================================
 
-headers = {
+CFEM_URL = (
+    "https://dadosabertos.anm.gov.br/"
+    "CFEM/CFEM_Arrecadacao_2022_2026.csv"
+)
+
+SIGMINE_MG_URL = (
+    "https://dadosabertos.anm.gov.br/"
+    "SIGMINE/PROCESSOS_MINERARIOS/MG.zip"
+)
+
+SCM_BASE = "https://dadosabertos.anm.gov.br/SCM/"
+
+SCM_FILES = {
+    "Alvará de Pesquisa": "Alvara_de_Pesquisa.csv",
+    "Cessões de Direitos": "Cessoes_de_Direitos.csv",
+    "Guia de Utilização": "Guia_de_Utilizacao_Autorizada.csv",
+    "Licenciamento": "Licenciamento.csv",
+    "PLG": "PLG.csv",
+    "Portaria de Lavra": "Portaria_de_Lavra.csv",
+    "Registro de Extração": "Registro_de_Extracao_Publicado.csv",
+    "Relatório de Pesquisa Aprovado": "Relatorio_de_Pesquisa_Aprovado.csv",
+    "Requerimento de Lavra": "Requerimento_de_Lavra.csv",
+    "Requerimento de Licenciamento": "Requerimento_de_Licenciamento.csv",
+    "Requerimento de Pesquisa": "Requerimento_de_Pesquisa.csv",
+    "Requerimento de PLG": "Requerimento_de_PLG.csv",
+    "Requerimento de Registro de Extração":
+        "Requerimento_de_Registro_de_Extracao_Protocolizado.csv",
+}
+
+HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 Chrome/120 Safari/537.36"
-    )
-}
-
-print("\nBaixando CSV da ANM...")
-
-response = requests.get(
-    URL_CFEM,
-    headers=headers,
-    timeout=180
-)
-
-response.raise_for_status()
-
-print(
-    f"Download concluído: "
-    f"{len(response.content) / 1024 / 1024:.2f} MB"
-)
-
-
-# ============================================================
-# 2. DATA DE ATUALIZAÇÃO DO CSV
-# ============================================================
-
-ultima_modificacao = response.headers.get("Last-Modified")
-
-data_atualizacao_anm = "Não informada"
-data_atualizacao_anm_iso = None
-
-if ultima_modificacao:
-
-    try:
-
-        data_http = parsedate_to_datetime(
-            ultima_modificacao
-        )
-
-        data_atualizacao_anm = (
-            data_http.strftime("%d/%m/%Y")
-        )
-
-        data_atualizacao_anm_iso = (
-            data_http.strftime("%Y-%m-%d")
-        )
-
-        print("Last-Modified:", ultima_modificacao)
-
-    except Exception as erro:
-
-        print(
-            "Erro ao interpretar Last-Modified:",
-            erro
-        )
-
-print(
-    "Atualização dos dados ANM:",
-    data_atualizacao_anm
-)
-
-data_geracao_webgis = (
-    datetime.now().strftime("%d/%m/%Y %H:%M")
-)
-
-
-# ============================================================
-# 3. LER CSV
-# ============================================================
-
-print("\nLendo CSV...")
-
-cfem = pd.read_csv(
-    BytesIO(response.content),
-    sep=None,
-    engine="python",
-    encoding="latin1"
-)
-
-print(
-    f"Registros encontrados: {len(cfem):,}"
-)
-
-
-# ============================================================
-# 4. FILTRAR MINAS GERAIS
-# ============================================================
-
-cfem_mg = cfem[
-    cfem["UF"]
-    .astype(str)
-    .str.strip()
-    .str.upper()
-    .eq("MG")
-].copy()
-
-print(
-    f"Registros MG: {len(cfem_mg):,}"
-)
-
-
-# ============================================================
-# 5. VALOR RECOLHIDO
-# ============================================================
-
-cfem_mg["ValorRecolhido"] = (
-    cfem_mg["ValorRecolhido"]
-    .astype(str)
-    .str.replace(".", "", regex=False)
-    .str.replace(",", ".", regex=False)
-)
-
-cfem_mg["ValorRecolhido"] = pd.to_numeric(
-    cfem_mg["ValorRecolhido"],
-    errors="coerce"
-).fillna(0)
-
-
-# ============================================================
-# 6. CÓDIGO MUNICIPAL
-# ============================================================
-
-cfem_mg["CodigoMunicipio"] = (
-    cfem_mg["CodigoMunicipio"]
-    .astype(str)
-    .str.replace(r"\.0$", "", regex=True)
-    .str.strip()
-    .str.zfill(7)
-)
-
-
-# ============================================================
-# 7. ANO
-# ============================================================
-
-cfem_mg["Ano"] = pd.to_numeric(
-    cfem_mg["Ano"],
-    errors="coerce"
-)
-
-cfem_mg = cfem_mg[
-    cfem_mg["Ano"].notna()
-].copy()
-
-cfem_mg["Ano"] = (
-    cfem_mg["Ano"].astype(int)
-)
-
-
-# ============================================================
-# 8. MÊS
-# ============================================================
-#
-# O CSV da ANM possui a coluna "Mês".
-# Aqui ela é convertida para números 1...12.
-#
-# A rotina também suporta, por segurança:
-# Janeiro, Fevereiro etc.
-# ============================================================
-
-mapa_meses_python = {
-    "janeiro": 1,
-    "fevereiro": 2,
-    "março": 3,
-    "marco": 3,
-    "abril": 4,
-    "maio": 5,
-    "junho": 6,
-    "julho": 7,
-    "agosto": 8,
-    "setembro": 9,
-    "outubro": 10,
-    "novembro": 11,
-    "dezembro": 12
+        "AppleWebKit/537.36 Chrome/153 Safari/537.36"
+    ),
+    "Accept": "*/*",
 }
 
 
-def converter_mes(valor):
+# ============================================================
+# 3. PALETA VISUAL
+# ============================================================
 
-    if pd.isna(valor):
-        return None
+AZUL_ESCURO = "#073B4C"
+AZUL = "#0B5D75"
+AZUL_MEDIO = "#168AAD"
+AZUL_CLARO = "#DDEFF4"
 
-    texto = str(valor).strip()
+VERDE = "#2A9D78"
+VERDE_CLARO = "#E7F5F0"
 
-    try:
+DOURADO = "#D9A441"
+DOURADO_CLARO = "#FFF5DD"
 
-        numero = int(float(texto))
+VERMELHO = "#C94C4C"
 
-        if 1 <= numero <= 12:
-            return numero
+TEXTO = "#263238"
+TEXTO_SEC = "#667580"
 
-    except (ValueError, TypeError):
-        pass
-
-    texto_normalizado = (
-        texto
-        .lower()
-        .replace("á", "a")
-        .replace("à", "a")
-        .replace("ã", "a")
-        .replace("â", "a")
-        .replace("é", "e")
-        .replace("ê", "e")
-        .replace("í", "i")
-        .replace("ó", "o")
-        .replace("ô", "o")
-        .replace("õ", "o")
-        .replace("ú", "u")
-        .replace("ç", "c")
-    )
-
-    mapa_normalizado = {
-        "janeiro": 1,
-        "fevereiro": 2,
-        "marco": 3,
-        "abril": 4,
-        "maio": 5,
-        "junho": 6,
-        "julho": 7,
-        "agosto": 8,
-        "setembro": 9,
-        "outubro": 10,
-        "novembro": 11,
-        "dezembro": 12
-    }
-
-    return mapa_normalizado.get(
-        texto_normalizado
-    )
-
-
-cfem_mg["Mes"] = (
-    cfem_mg["Mês"]
-    .apply(converter_mes)
-)
-
-cfem_mg = cfem_mg[
-    cfem_mg["Mes"].notna()
-].copy()
-
-cfem_mg["Mes"] = (
-    cfem_mg["Mes"].astype(int)
-)
-
-print(
-    "Meses encontrados:",
-    sorted(cfem_mg["Mes"].unique().tolist())
-)
+FUNDO = "#F4F7F9"
+BRANCO = "#FFFFFF"
+BORDA = "#DFE6EB"
 
 
 # ============================================================
-# 9. TEXTOS
+# 4. CSS
 # ============================================================
 
-cfem_mg["Município"] = (
-    cfem_mg["Município"]
-    .fillna("")
-    .astype(str)
-    .str.strip()
-)
-
-cfem_mg["Substância"] = (
-    cfem_mg["Substância"]
-    .fillna("Não informada")
-    .astype(str)
-    .str.strip()
-)
-
-cfem_mg.loc[
-    cfem_mg["Substância"].eq(""),
-    "Substância"
-] = "Não informada"
-
-
-# ============================================================
-# 10. ANOS
-# ============================================================
-
-anos = sorted(
-    cfem_mg["Ano"]
-    .unique()
-    .tolist()
-)
-
-if not anos:
-    raise ValueError("Nenhum ano encontrado.")
-
-ano_padrao = max(anos)
-
-print("Anos:", anos)
-print("Ano padrão:", ano_padrao)
-
-
-# ============================================================
-# 11. AGREGAÇÃO MENSAL
-#
-# IMPORTANTE:
-# Não agregamos mais somente por ano.
-#
-# O mês é preservado para permitir:
-#
-# Janeiro
-# Janeiro + Fevereiro
-# Janeiro + Março + Julho
-# Todos os meses
-# etc.
-# ============================================================
-
-cfem_total_mensal = (
-    cfem_mg
-    .groupby(
-        [
-            "Ano",
-            "Mes",
-            "CodigoMunicipio",
-            "Município"
-        ],
-        as_index=False
-    )["ValorRecolhido"]
-    .sum()
-    .rename(
-        columns={
-            "ValorRecolhido":
-                "CFEM_Total"
-        }
-    )
-)
-
-cfem_total_mensal["CFEM_Total"] = (
-    cfem_total_mensal["CFEM_Total"]
-    .astype(float)
-)
-
-
-# ============================================================
-# 12. AGREGAÇÃO MENSAL POR SUBSTÂNCIA
-# ============================================================
-
-cfem_substancias_mensal = (
-    cfem_mg
-    .groupby(
-        [
-            "Ano",
-            "Mes",
-            "CodigoMunicipio",
-            "Município",
-            "Substância"
-        ],
-        as_index=False
-    )["ValorRecolhido"]
-    .sum()
-    .rename(
-        columns={
-            "ValorRecolhido":
-                "CFEM_Total"
-        }
-    )
-)
-
-cfem_substancias_mensal["CFEM_Total"] = (
-    cfem_substancias_mensal["CFEM_Total"]
-    .astype(float)
-)
-
-
-# ============================================================
-# 13. SUBSTÂNCIAS
-# ============================================================
-
-todas_substancias = sorted(
-    cfem_substancias_mensal[
-        "Substância"
-    ]
-    .dropna()
-    .astype(str)
-    .unique()
-    .tolist(),
-    key=lambda x: x.upper()
-)
-
-ranking_substancias = (
-    cfem_substancias_mensal
-    .groupby(
-        "Substância",
-        as_index=False
-    )["CFEM_Total"]
-    .sum()
-    .sort_values(
-        "CFEM_Total",
-        ascending=False
-    )
-)
-
-principais_substancias = (
-    ranking_substancias
-    .head(10)["Substância"]
-    .tolist()
-)
-
-
-# ============================================================
-# 14. JSON
-# ============================================================
-
-dados_webgis = {
-
-    "metadata": {
-
-        "titulo":
-            "Mapa de Arrecadação da CFEM — Minas Gerais",
-
-        "descricao":
-            "Compensação Financeira pela Exploração "
-            "de Recursos Minerais",
-
-        "autoria":
-            "Melissa Carvalho",
-
-        "anos":
-            [int(x) for x in anos],
-
-        "ano_padrao":
-            int(ano_padrao),
-
-        "meses":
-            list(range(1, 13)),
-
-        "substancias":
-            todas_substancias,
-
-        "principais_substancias":
-            principais_substancias,
-
-        "data_atualizacao_anm":
-            data_atualizacao_anm,
-
-        "data_atualizacao_anm_iso":
-            data_atualizacao_anm_iso,
-
-        "gerado_em":
-            data_geracao_webgis
-    },
-
-    "totais":
-        cfem_total_mensal.to_dict(
-            orient="records"
-        ),
-
-    "substancias":
-        cfem_substancias_mensal.to_dict(
-            orient="records"
-        )
-}
-
-
-with open(
-    ARQUIVO_DADOS,
-    "w",
-    encoding="utf-8"
-) as arquivo:
-
-    json.dump(
-        dados_webgis,
-        arquivo,
-        ensure_ascii=False,
-        separators=(",", ":")
-    )
-
-
-print(
-    f"JSON criado: {ARQUIVO_DADOS}"
-)
-
-
-# ============================================================
-# 15. MUNICÍPIOS
-# ============================================================
-
-print("\nCarregando municípios...")
-
-municipios = gpd.read_file(
-    ARQUIVO_MUNICIPIOS
-)
-
-municipios = municipios.to_crs(
-    epsg=4326
-)
-
-municipios["CD_MUN"] = (
-    municipios["CD_MUN"]
-    .astype(str)
-    .str.replace(
-        r"\.0$",
-        "",
-        regex=True
-    )
-    .str.zfill(7)
-)
-
-municipios = municipios[
-    [
-        "CD_MUN",
-        "NM_MUN",
-        "geometry"
-    ]
-].copy()
-
-
-# ============================================================
-# 16. DADOS INICIAIS
-#
-# Ano padrão + todos os meses.
-# ============================================================
-
-dados_iniciais = (
-    cfem_total_mensal[
-        cfem_total_mensal["Ano"]
-        .eq(ano_padrao)
-    ]
-    .groupby(
-        [
-            "CodigoMunicipio",
-            "Município"
-        ],
-        as_index=False
-    )["CFEM_Total"]
-    .sum()
-)
-
-geo_inicial = municipios.merge(
-    dados_iniciais[
-        [
-            "CodigoMunicipio",
-            "CFEM_Total"
-        ]
-    ],
-    left_on="CD_MUN",
-    right_on="CodigoMunicipio",
-    how="left"
-)
-
-geo_inicial["CFEM_Total"] = (
-    geo_inicial["CFEM_Total"]
-    .fillna(0)
-    .astype(float)
-)
-
-geo_inicial["Ano"] = (
-    int(ano_padrao)
-)
-
-
-# ============================================================
-# 17. CORES
-# ============================================================
-
-def cor_cfem(valor):
-
-    valor = float(valor or 0)
-
-    if valor <= 0:
-        return "#eeeeee"
-
-    elif valor <= 10_000:
-        return "#ffffcc"
-
-    elif valor <= 100_000:
-        return "#ffeda0"
-
-    elif valor <= 1_000_000:
-        return "#fed976"
-
-    elif valor <= 10_000_000:
-        return "#feb24c"
-
-    elif valor <= 100_000_000:
-        return "#f03b20"
-
-    return "#bd0026"
-
-
-# ============================================================
-# 18. MAPA
-# ============================================================
-
-mapa_cfem = folium.Map(
-    location=[
-        -18.5,
-        -44.5
-    ],
-    zoom_start=6,
-    tiles=None,
-    control_scale=True,
-    prefer_canvas=True
-)
-
-
-# ============================================================
-# 19. MAPAS BASE
-# ============================================================
-
-folium.TileLayer(
-
-    tiles=(
-        "https://{s}.tile-cyclosm.openstreetmap.fr/"
-        "cyclosm/{z}/{x}/{y}.png"
-    ),
-
-    name="CyclOSM",
-
-    attr=(
-        "CyclOSM | © OpenStreetMap contributors"
-    ),
-
-    overlay=False,
-    control=True,
-    show=True
-
-).add_to(mapa_cfem)
-
-
-folium.TileLayer(
-
-    tiles=(
-        "https://server.arcgisonline.com/"
-        "ArcGIS/rest/services/"
-        "World_Topo_Map/MapServer/"
-        "tile/{z}/{y}/{x}"
-    ),
-
-    name="Esri World Topo",
-
-    attr="Tiles © Esri",
-
-    overlay=False,
-    control=True,
-    show=False
-
-).add_to(mapa_cfem)
-
-
-# ============================================================
-# 20. MUNICÍPIOS
-# ============================================================
-
-camada_municipios = folium.GeoJson(
-
-    geo_inicial[
-        [
-            "CD_MUN",
-            "NM_MUN",
-            "Ano",
-            "CFEM_Total",
-            "geometry"
-        ]
-    ],
-
-    name="CFEM",
-
-    control=False,
-
-    style_function=lambda feature: {
-
-        "fillColor":
-            cor_cfem(
-                feature[
-                    "properties"
-                ]["CFEM_Total"]
-            ),
-
-        "color":
-            "#555555",
-
-        "weight":
-            0.6,
-
-        "fillOpacity":
-            0.80
-    }
-
-).add_to(mapa_cfem)
-
-
-nome_camada_js = (
-    camada_municipios.get_name()
-)
-
-nome_mapa_js = (
-    mapa_cfem.get_name()
-)
-
-
-# ============================================================
-# 21. LIMITES MG
-# ============================================================
-
-minx, miny, maxx, maxy = (
-    municipios.total_bounds
-)
-
-limites_mg = [
-    [
-        float(miny),
-        float(minx)
-    ],
-    [
-        float(maxy),
-        float(maxx)
-    ]
-]
-
-limites_mg_json = json.dumps(
-    limites_mg
-)
-
-
-# ============================================================
-# 22. TÍTULO
-# ============================================================
-
-titulo_html = """
-<div id="titulo-webgis">
-
-    <div class="titulo-desktop">
-        Mapa de Arrecadação da CFEM — Minas Gerais
-    </div>
-
-    <div class="titulo-mobile">
-        CFEM — Minas Gerais
-    </div>
-
-    <div class="titulo-subtitulo">
-        Compensação Financeira pela Exploração
-        de Recursos Minerais
-    </div>
-
-</div>
-"""
-
-mapa_cfem.get_root().html.add_child(
-    folium.Element(
-        titulo_html
-    )
-)
-
-
-# ============================================================
-# 23. VARIÁVEIS JAVASCRIPT
-# ============================================================
-
-anos_json = json.dumps(
-    [int(x) for x in anos],
-    ensure_ascii=False
-)
-
-substancias_json = json.dumps(
-    todas_substancias,
-    ensure_ascii=False
-)
-
-principais_json = json.dumps(
-    principais_substancias,
-    ensure_ascii=False
-)
-
-municipios_json = json.dumps(
-    municipios[
-        [
-            "CD_MUN",
-            "NM_MUN"
-        ]
-    ]
-    .sort_values("NM_MUN")
-    .to_dict(orient="records"),
-    ensure_ascii=False
-)
-
-data_atualizacao_anm_json = json.dumps(
-    data_atualizacao_anm,
-    ensure_ascii=False
-)
-
-
-# ============================================================
-# 24. INTERFACE
-#
-# NÃO USAR F-STRING.
-# ============================================================
-
-interface_html = r"""
+st.markdown(
+    """
 <style>
 
-/* ==========================================================
-   GERAL
-   ========================================================== */
-
-html,
-body {
-    margin:0;
-    padding:0;
-}
-
-#titulo-webgis,
-#painel-cfem,
-#legenda-cfem,
-#modal-sobre-cfem,
-#botao-mobile-consulta,
-#botao-mobile-legenda {
-    font-family:Arial, Helvetica, sans-serif;
-}
-
-
-/* ==========================================================
-   TÍTULO
-   ========================================================== */
-
-#titulo-webgis {
-
-    position:fixed;
-
-    top:10px;
-    left:70px;
-
-    z-index:9997;
-
-    background:rgba(255,255,255,.96);
-
-    border:1px solid #888;
-    border-radius:7px;
-
-    padding:9px 16px;
-
-    box-shadow:
-        0 2px 7px rgba(0,0,0,.25);
-
-    pointer-events:none;
-}
-
-.titulo-desktop {
-
-    display:block;
-
-    font-size:19px;
-    font-weight:bold;
-
-    white-space:nowrap;
-}
-
-.titulo-mobile {
-    display:none;
-}
-
-.titulo-subtitulo {
-
-    font-size:12px;
-
-    margin-top:4px;
-}
-
-
-/* ==========================================================
-   PAINEL
-   ========================================================== */
-
-#painel-cfem {
-
-    position:fixed;
-
-    top:90px;
-    right:20px;
-
-    width:365px;
-
-    max-height:calc(100vh - 115px);
-
-    overflow-y:auto;
-    overflow-x:hidden;
-
-    z-index:9999;
-
-    background:
-        rgba(255,255,255,.97);
-
-    border:1px solid #999;
-
-    border-radius:8px;
-
-    padding:14px;
-
-    box-sizing:border-box;
-
-    box-shadow:
-        0 2px 8px rgba(0,0,0,.28);
-}
-
-
-.cabecalho-painel {
-
-    display:flex;
-
-    justify-content:
-        space-between;
-
-    align-items:center;
-}
-
-.cabecalho-painel h3 {
-
-    margin:0;
-
-    font-size:16px;
-}
-
-#fechar-painel-mobile {
-
-    display:none;
-
-    width:36px;
-    height:36px;
-
-    border:0;
-
-    background:#eee;
-
-    border-radius:50%;
-
-    font-size:22px;
-
-    cursor:pointer;
-}
-
-
-/* ==========================================================
-   FORMULÁRIO
-   ========================================================== */
-
-.rotulo-cfem {
-
-    display:block;
-
-    font-size:12px;
-    font-weight:bold;
-
-    margin:10px 0 5px;
-
-    color:#444;
-}
-
-#filtro-ano,
-#busca-substancia,
-#busca-municipio {
-
-    width:100%;
-
-    min-height:40px;
-
-    padding:8px;
-
-    box-sizing:border-box;
-
-    border:1px solid #aaa;
-
-    border-radius:5px;
-
-    background:#fff;
-
-    font-size:13px;
-}
-
-
-#lista-substancias,
-#lista-municipios {
-
-    display:none;
-
-    max-height:220px;
-
-    overflow-y:auto;
-
-    margin-top:3px;
-
-    border:1px solid #bbb;
-
-    border-radius:5px;
-
-    background:#fff;
-
-    box-shadow:
-        0 2px 5px rgba(0,0,0,.15);
-}
-
-
-.item-substancia,
-.item-municipio {
-
-    padding:10px;
-
-    font-size:12px;
-
-    cursor:pointer;
-
-    border-bottom:
-        1px solid #eee;
-}
-
-.item-substancia:hover,
-.item-municipio:hover {
-
-    background:#eee;
-}
-
-.item-principal {
-    font-weight:bold;
-}
-
-
-#botao-voltar-mg {
-
-    width:100%;
-
-    min-height:40px;
-
-    margin-top:8px;
-
-    border:1px solid #999;
-
-    border-radius:5px;
-
-    background:#f5f5f5;
-
-    cursor:pointer;
-}
-
-
-/* ==========================================================
-   FILTRO DE MESES - COMPACTO / EXPANSÍVEL
-   ========================================================== */
-
-#bloco-periodo {
-    margin-top:10px;
-}
-
-#controle-periodo {
-    display:flex;
-    gap:6px;
-}
-
-.botao-periodo {
-    flex:1;
-    min-height:38px;
-    border:1px solid #999;
-    border-radius:5px;
-    background:#f5f5f5;
-    cursor:pointer;
-    font-size:11px;
-}
-
-.botao-periodo:hover {
-    background:#e9e9e9;
-}
-
-.botao-periodo.ativo {
-    background:#333;
-    color:#fff;
-    border-color:#333;
-}
-
-#periodo-compacto {
-    display:none;
-    margin-top:7px;
-    padding:8px 9px;
-    border:1px solid #ccc;
-    border-radius:6px;
-    background:#fafafa;
-}
-
-#periodo-compacto.visivel {
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    gap:8px;
+:root {
+    --primary: #0B5D75;
+    --primary2: #168AAD;
+    --green: #2A9D78;
+    --gold: #D9A441;
+    --background: #F4F7F9;
+    --border: #DFE6EB;
+    --text: #263238;
+    --muted: #667580;
 }
 
-#periodo-compacto-texto {
-    min-width:0;
-    font-size:11px;
-    line-height:1.35;
-    color:#555;
+.stApp {
+    background-color: #F4F7F9;
 }
 
-#periodo-compacto-texto strong {
-    display:block;
-    margin-top:2px;
-    font-size:12px;
-    color:#222;
+.block-container {
+    max-width: 1500px;
+    padding-top: 1.15rem;
+    padding-bottom: 2rem;
 }
 
-#botao-alterar-meses {
-    flex-shrink:0;
-    min-height:32px;
-    padding:5px 10px;
-    border:1px solid #999;
-    border-radius:4px;
-    background:#fff;
-    cursor:pointer;
-    font-size:10px;
+[data-testid="stSidebar"] {
+    background: #FFFFFF;
+    border-right: 1px solid #DFE6EB;
 }
 
-#botao-alterar-meses:hover {
-    background:#eee;
+[data-testid="stSidebar"] .block-container {
+    padding-top: 1.3rem;
 }
 
-#painel-meses {
-    display:none;
-    margin-top:7px;
-    padding:9px;
-    border:1px solid #ccc;
-    border-radius:6px;
-    background:#fafafa;
+[data-testid="stSidebar"] h1 {
+    font-size: 1.45rem;
 }
 
-#painel-meses.aberto {
-    display:block;
+h1 {
+    color: #263238;
+    font-weight: 750;
+    letter-spacing: -0.6px;
 }
 
-.grade-meses {
-    display:grid;
-    grid-template-columns:1fr 1fr 1fr;
-    gap:5px;
+h2, h3 {
+    color: #263238;
+    font-weight: 700;
 }
 
-.item-mes {
-    display:flex;
-    align-items:center;
-    gap:5px;
-    min-height:31px;
-    padding:4px 5px;
-    box-sizing:border-box;
-    background:#fff;
-    border:1px solid #ddd;
-    border-radius:4px;
-    cursor:pointer;
-    font-size:10px;
-    user-select:none;
+p {
+    color: #46545C;
 }
 
-.item-mes:hover {
-    background:#f2f2f2;
+div[data-testid="stMetric"] {
+    background: #FFFFFF;
+    border: 1px solid #DFE6EB;
+    border-radius: 14px;
+    padding: 15px 17px 13px 17px;
+    min-height: 118px;
+    box-shadow: 0px 2px 8px rgba(25, 45, 55, 0.035);
 }
 
-.item-mes input {
-    margin:0;
+div[data-testid="stMetricLabel"] {
+    color: #667580;
+    font-weight: 600;
 }
 
-.acoes-meses {
-    display:grid;
-    grid-template-columns:1fr 1fr;
-    gap:6px;
-    margin-top:8px;
+div[data-testid="stMetricValue"] {
+    color: #0B5D75;
+    font-size: 1.85rem;
+    font-weight: 700;
 }
 
-.botao-meses {
-    min-height:32px;
-    border:1px solid #aaa;
-    border-radius:4px;
-    background:#fff;
-    cursor:pointer;
-    font-size:10px;
+div[data-testid="stPlotlyChart"] {
+    background: #FFFFFF;
+    border: 1px solid #DFE6EB;
+    border-radius: 15px;
+    padding: 8px;
+    box-shadow: 0px 2px 8px rgba(25, 45, 55, 0.03);
 }
 
-.botao-meses:hover {
-    background:#eee;
+div[data-testid="stDataFrame"] {
+    background: white;
+    border: 1px solid #DFE6EB;
+    border-radius: 13px;
+    overflow: hidden;
 }
 
-#botao-concluir-meses {
-    grid-column:1/-1;
-    min-height:36px;
-    border:1px solid #333;
-    border-radius:4px;
-    background:#333;
-    color:#fff;
-    cursor:pointer;
-    font-size:11px;
-    font-weight:bold;
+div[data-baseweb="select"] > div {
+    border-radius: 9px;
 }
 
-#botao-concluir-meses:hover {
-    background:#222;
+div[data-testid="stTextInput"] input {
+    border-radius: 9px;
 }
 
-#resumo-meses {
-    margin-top:7px;
-    padding:6px 7px;
-    background:#fff;
-    border:1px solid #ddd;
-    border-radius:4px;
-    font-size:10px;
-    color:#555;
-    line-height:1.4;
+.stButton > button,
+.stDownloadButton > button {
+    border-radius: 9px;
+    font-weight: 600;
+    min-height: 40px;
 }
 
-#aviso-meses {
-    display:none;
-    margin-top:6px;
-    padding:7px;
-    border:1px solid #e2cf8a;
-    border-radius:4px;
-    background:#fff3cd;
-    color:#665400;
-    font-size:10px;
-    line-height:1.35;
+div[data-testid="stExpander"] {
+    border: 1px solid #DFE6EB;
+    border-radius: 12px;
+    background: #FFFFFF;
 }
 
-#aviso-meses.visivel {
-    display:block;
+hr {
+    border-color: #DFE6EB;
 }
 
-
-/* ==========================================================
-   SEÇÕES
-   ========================================================== */
-
-.secao {
-
-    margin-top:13px;
-
-    padding-top:10px;
-
-    border-top:
-        1px solid #ddd;
-}
-
-.secao-titulo {
-
-    margin-bottom:7px;
-
-    font-size:12px;
-
-    font-weight:bold;
-
-    color:#444;
-}
-
-
-/* ==========================================================
-   INDICADORES
-   ========================================================== */
-
-.grade-indicadores {
-
-    display:grid;
-
-    grid-template-columns:
-        1fr 1fr;
-
-    gap:7px;
-}
-
-.cartao-indicador {
-
-    border:1px solid #ddd;
-
-    border-radius:6px;
-
-    background:#fafafa;
-
-    padding:8px;
-}
-
-.cartao-indicador.total {
-
-    grid-column:1/-1;
-}
-
-.indicador-rotulo {
-
-    font-size:10px;
-
-    color:#666;
-}
-
-.indicador-valor {
-
-    margin-top:4px;
-
-    font-size:14px;
-
-    font-weight:bold;
-}
-
-.indicador-detalhe {
-
-    margin-top:3px;
-
-    font-size:10px;
-
-    color:#666;
-}
-
-
-/* ==========================================================
-   RANKING
-   ========================================================== */
-
-#lista-ranking {
-
-    border:1px solid #ddd;
-
-    border-radius:6px;
-
-    overflow:hidden;
-}
-
-.item-ranking {
-
-    display:grid;
-
-    grid-template-columns:
-        28px 1fr auto;
-
-    gap:6px;
-
-    align-items:center;
-
-    padding:7px 8px;
-
-    border-bottom:
-        1px solid #eee;
-
-    cursor:pointer;
-}
-
-.item-ranking:hover {
-
-    background:#f1f1f1;
-}
-
-.item-ranking.selecionado {
-
-    background:#e8e8e8;
-
-    box-shadow:
-        inset 3px 0 0 #222;
+#MainMenu {
+    visibility: hidden;
 }
-
-.ranking-posicao {
-
-    font-size:11px;
-
-    font-weight:bold;
-
-    color:#777;
-}
-
-.ranking-municipio {
-
-    min-width:0;
-
-    overflow:hidden;
-
-    text-overflow:ellipsis;
-
-    white-space:nowrap;
-
-    font-size:11px;
-
-    font-weight:600;
-}
-
-.ranking-valor {
-
-    font-size:10px;
-
-    font-weight:bold;
-
-    white-space:nowrap;
-}
-
-
-/* ==========================================================
-   MUNICÍPIO
-   ========================================================== */
-
-#painel-municipio {
-
-    display:none;
-
-    margin-top:13px;
-
-    padding-top:10px;
-
-    border-top:
-        2px solid #777;
-}
-
-#municipio-nome {
-
-    margin-bottom:8px;
-
-    font-size:17px;
-
-    font-weight:bold;
-}
-
-.municipio-grade {
-
-    display:grid;
-
-    grid-template-columns:
-        1fr 1fr;
-
-    gap:7px;
-}
-
-.municipio-cartao {
-
-    border:1px solid #ddd;
-
-    border-radius:6px;
-
-    background:#fafafa;
-
-    padding:8px;
-}
-
-.municipio-cartao.principal {
-
-    grid-column:1/-1;
-}
-
-.municipio-rotulo {
-
-    font-size:9px;
-
-    color:#666;
-}
-
-.municipio-valor {
-
-    margin-top:4px;
-
-    font-size:13px;
-
-    font-weight:bold;
-}
-
-
-/* ==========================================================
-   SÉRIE
-   ========================================================== */
-
-#serie-barras {
-
-    border:1px solid #ddd;
-
-    border-radius:6px;
-
-    padding:8px;
-}
-
-.serie-linha {
-
-    display:grid;
-
-    grid-template-columns:
-        42px 1fr 82px;
-
-    gap:6px;
-
-    align-items:center;
-
-    min-height:27px;
-}
-
-.serie-ano {
-
-    font-size:10px;
-
-    font-weight:bold;
-}
-
-.serie-barra-fundo {
-
-    height:11px;
-
-    background:#eee;
-
-    border-radius:3px;
-
-    overflow:hidden;
-}
-
-.serie-barra {
-
-    height:100%;
-
-    background:#777;
-}
-
-.serie-linha.ativa
-.serie-barra {
-
-    background:#222;
-}
-
-.serie-valor {
-
-    font-size:9px;
-
-    text-align:right;
-}
-
-.serie-nota {
-
-    margin-top:7px;
-
-    font-size:9px;
-
-    line-height:1.4;
-
-    color:#777;
-}
-
-
-/* ==========================================================
-   DADOS
-   ========================================================== */
-
-.botoes-etapa9 {
-
-    display:grid;
-
-    grid-template-columns:
-        1fr 1fr;
-
-    gap:7px;
-}
-
-.botao-etapa9 {
-
-    min-height:40px;
-
-    border:1px solid #888;
-
-    border-radius:5px;
-
-    background:#f5f5f5;
-
-    cursor:pointer;
-
-    font-size:11px;
-
-    font-weight:600;
-}
-
-
-#info-atualizacao-painel {
-
-    margin-top:8px;
-
-    padding:8px;
-
-    background:#fafafa;
-
-    border:1px solid #ddd;
-
-    border-radius:5px;
-
-    font-size:10px;
-
-    line-height:1.4;
-}
-
-
-#status-consulta {
-
-    margin-top:12px;
-
-    padding-top:9px;
-
-    border-top:
-        1px solid #ddd;
-
-    font-size:11px;
-
-    color:#555;
-
-    line-height:1.5;
-}
-
-
-/* ==========================================================
-   LEGENDA
-   ========================================================== */
-
-#legenda-cfem {
-
-    position:fixed;
-
-    bottom:30px;
-    left:30px;
-
-    width:285px;
-
-    z-index:9996;
-
-    background:
-        rgba(255,255,255,.96);
-
-    border:1px solid #888;
-
-    border-radius:7px;
-
-    padding:12px;
-
-    box-sizing:border-box;
-
-    box-shadow:
-        0 2px 7px rgba(0,0,0,.25);
-
-    font-size:12px;
-}
-
-.legenda-titulo {
-
-    margin-bottom:8px;
-
-    font-size:14px;
-
-    font-weight:bold;
-}
-
-.legenda-item {
-
-    margin-bottom:4px;
-}
-
-.caixa-cor {
-
-    display:inline-block;
-
-    width:16px;
-    height:16px;
-
-    margin-right:6px;
-
-    vertical-align:middle;
-
-    border:1px solid #999;
-}
-
-.creditos-cfem {
-
-    margin-top:9px;
-
-    padding-top:7px;
-
-    border-top:
-        1px solid #bbb;
-
-    font-size:10px;
-
-    line-height:1.45;
-}
-
-
-/* ==========================================================
-   MOBILE BUTTONS
-   ========================================================== */
-
-#botao-mobile-consulta,
-#botao-mobile-legenda {
-
-    display:none;
-}
-
-
-/* ==========================================================
-   MODAL
-   ========================================================== */
-
-#modal-sobre-cfem {
-
-    display:none;
-
-    position:fixed;
-
-    inset:0;
-
-    z-index:20000;
-
-    background:
-        rgba(0,0,0,.48);
-
-    padding:25px;
-
-    box-sizing:border-box;
-
-    align-items:center;
-
-    justify-content:center;
-}
-
-#modal-sobre-cfem.aberto {
-
-    display:flex;
-}
-
-#conteudo-modal {
-
-    position:relative;
-
-    width:min(
-        680px,
-        calc(100vw - 40px)
-    );
-
-    max-height:
-        calc(100vh - 50px);
-
-    overflow-y:auto;
-
-    background:#fff;
-
-    border-radius:9px;
-
-    padding:20px;
-
-    box-sizing:border-box;
-}
-
-#fechar-modal {
-
-    position:absolute;
-
-    top:10px;
-    right:12px;
-
-    width:34px;
-    height:34px;
-
-    border:0;
-
-    border-radius:50%;
-
-    font-size:20px;
-
-    cursor:pointer;
-}
-
-.tabela-metadados {
-
-    width:100%;
-
-    border-collapse:collapse;
-
-    font-size:11px;
-}
-
-.tabela-metadados td {
-
-    padding:7px 5px;
-
-    border-bottom:
-        1px solid #eee;
-}
-
-.tabela-metadados
-td:first-child {
-
-    width:180px;
-
-    font-weight:bold;
-}
-
-
-/* ==========================================================
-   MOBILE
-   ========================================================== */
-
-@media(max-width:768px) {
-
-
-    #titulo-webgis {
-
-        top:10px;
-
-        left:72px;
-        right:70px;
-
-        width:auto;
-
-        padding:8px 10px;
-
-        text-align:center;
-    }
-
-
-    .titulo-desktop {
-        display:none;
-    }
-
-    .titulo-mobile {
-
-        display:block;
-
-        font-size:14px;
-
-        font-weight:bold;
-
-        white-space:nowrap;
-    }
-
-    .titulo-subtitulo {
-        display:none;
-    }
-
-
-    /* PAINEL INFERIOR */
-
-    #painel-cfem {
-
-        position:fixed;
-
-        top:auto;
-        left:0;
-        right:0;
-        bottom:0;
-
-        width:100%;
-
-        height:72vh;
-
-        max-height:72vh;
-
-        overflow-y:auto;
-
-        border:0;
-
-        border-top:
-            1px solid #888;
-
-        border-radius:
-            18px 18px 0 0;
-
-        padding:
-            12px
-            14px
-            calc(
-                22px +
-                env(
-                    safe-area-inset-bottom
-                )
-            );
-
-        z-index:15000;
-
-        box-shadow:
-            0 -4px 18px
-            rgba(0,0,0,.30);
-
-        transform:
-            translateY(105%);
-
-        transition:
-            transform .25s ease;
-    }
-
-
-    #painel-cfem.aberto {
-
-        transform:
-            translateY(0);
-    }
-
-
-    #fechar-painel-mobile {
-
-        display:block;
-    }
-
-
-    .cabecalho-painel {
-
-        position:sticky;
-
-        top:-12px;
-
-        z-index:20;
-
-        background:#fff;
-
-        margin:
-            -12px -14px 5px;
-
-        padding:10px 14px;
-
-        border-bottom:
-            1px solid #eee;
-    }
-
-
-    /* TOUCH */
-
-    #filtro-ano,
-    #busca-substancia,
-    #busca-municipio,
-    #botao-voltar-mg,
-    .botao-etapa9,
-    .botao-periodo {
-
-        min-height:46px;
-
-        font-size:16px;
-    }
-
-
-    .rotulo-cfem {
-
-        font-size:13px;
-
-        margin-top:13px;
-    }
-
-
-    .item-substancia,
-    .item-municipio {
-
-        min-height:44px;
-
-        display:flex;
-
-        align-items:center;
-
-        box-sizing:border-box;
-
-        font-size:14px;
-    }
-
-
-    /* ======================================================
-       PERÍODO / MESES - MOBILE
-       ====================================================== */
-
-    #controle-periodo {
-        gap:7px;
-    }
-
-    .botao-periodo {
-        min-height:46px;
-        font-size:13px;
-    }
-
-    #periodo-compacto {
-        padding:10px;
-    }
-
-    #periodo-compacto-texto {
-        font-size:12px;
-    }
-
-    #periodo-compacto-texto strong {
-        font-size:14px;
-    }
-
-    #botao-alterar-meses {
-        min-height:40px;
-        padding:7px 11px;
-        font-size:12px;
-    }
-
-    #painel-meses {
-        padding:9px;
-    }
-
-    .grade-meses {
-        grid-template-columns:
-            1fr 1fr;
-        gap:6px;
-    }
-
-    .item-mes {
-        min-height:44px;
-        padding:7px;
-        font-size:13px;
-    }
-
-    .item-mes input {
-        width:18px;
-        height:18px;
-    }
-
-    .botao-meses {
-        min-height:42px;
-        font-size:12px;
-    }
-
-    #botao-concluir-meses {
-        min-height:46px;
-        font-size:13px;
-    }
-
-    #resumo-meses,
-    #aviso-meses {
-        padding:8px;
-        font-size:12px;
-    }
-
-
-    /* BOTÃO CONSULTA */
-
-    #botao-mobile-consulta {
-
-        display:block;
-
-        position:fixed;
-
-        left:50%;
-
-        bottom:
-            calc(
-                22px +
-                env(
-                    safe-area-inset-bottom
-                )
-            );
-
-        transform:
-            translateX(-50%);
-
-        z-index:12000;
-
-        min-width:190px;
-
-        min-height:48px;
-
-        padding:10px 18px;
-
-        border:
-            1px solid #555;
-
-        border-radius:24px;
-
-        background:
-            rgba(255,255,255,.97);
-
-        box-shadow:
-            0 3px 12px
-            rgba(0,0,0,.30);
-
-        font-size:14px;
-
-        font-weight:bold;
-
-        cursor:pointer;
-    }
-
-
-    body.painel-mobile-aberto
-    #botao-mobile-consulta {
-
-        display:none;
-    }
-
-
-    /* LEGENDA */
-
-    #botao-mobile-legenda {
-
-        display:block;
-
-        position:fixed;
-
-        left:12px;
-
-        bottom:
-            calc(
-                82px +
-                env(
-                    safe-area-inset-bottom
-                )
-            );
-
-        z-index:11999;
-
-        min-height:42px;
-
-        padding:8px 13px;
-
-        border:
-            1px solid #666;
-
-        border-radius:21px;
-
-        background:
-            rgba(255,255,255,.96);
-
-        box-shadow:
-            0 2px 8px
-            rgba(0,0,0,.25);
-
-        font-size:12px;
-
-        font-weight:bold;
-    }
-
-
-    #legenda-cfem {
-
-        display:none;
-
-        position:fixed;
-
-        left:12px;
-
-        bottom:
-            calc(
-                132px +
-                env(
-                    safe-area-inset-bottom
-                )
-            );
-
-        width:245px;
-
-        max-height:55vh;
-
-        overflow-y:auto;
-
-        z-index:11998;
-
-        padding:10px;
-
-        font-size:11px;
-    }
-
-
-    #legenda-cfem.aberta {
-
-        display:block;
-    }
-
-
-    #legenda-cfem
-    .creditos-cfem {
-
-        display:none;
-    }
-
-
-    body.painel-mobile-aberto
-    #legenda-cfem,
-
-    body.painel-mobile-aberto
-    #botao-mobile-legenda {
-
-        display:none !important;
-    }
-
-
-    /* OUTROS */
-
-    .leaflet-control-zoom a {
-
-        width:42px !important;
-
-        height:42px !important;
-
-        line-height:
-            42px !important;
-
-        font-size:
-            22px !important;
-    }
-
-
-    .leaflet-tooltip {
-
-        max-width:220px;
-
-        white-space:normal;
-
-        font-size:11px;
-    }
-
-
-    .botoes-etapa9 {
-
-        grid-template-columns:1fr;
-    }
-
-
-    #modal-sobre-cfem {
-
-        padding:10px;
-    }
-
-
-    #conteudo-modal {
-
-        width:100%;
-
-        max-height:88vh;
-
-        padding:18px;
-    }
-
-}
-
-
-/* ==========================================================
-   CELULAR MUITO ESTREITO
-   ========================================================== */
-
-@media(max-width:400px) {
-
-    #titulo-webgis {
-
-        left:66px;
-        right:62px;
-
-        padding:7px 5px;
-    }
-
-    .titulo-mobile {
-
-        font-size:12px;
-    }
-
-    #painel-cfem {
-
-        height:75vh;
-
-        max-height:75vh;
-    }
-
-    #legenda-cfem {
-
-        width:220px;
-    }
-
-    .grade-indicadores {
-
-        grid-template-columns:1fr;
-    }
-
-    .cartao-indicador.total {
-
-        grid-column:auto;
-    }
 
+footer {
+    visibility: hidden;
 }
 
 </style>
-
-
-<!-- ========================================================
-     MOBILE
-     ======================================================== -->
-
-<button
-    id="botao-mobile-legenda"
-    type="button">
-    Legenda
-</button>
-
-<button
-    id="botao-mobile-consulta"
-    type="button">
-    ☰ Consulta CFEM
-</button>
-
-
-<!-- ========================================================
-     PAINEL
-     ======================================================== -->
-
-<div id="painel-cfem">
-
-<div class="cabecalho-painel">
-
-<h3>
-Consulta CFEM
-</h3>
-
-<button
-    id="fechar-painel-mobile"
-    type="button">
-×
-</button>
-
-</div>
-
-
-<!-- ANO -->
-
-<label class="rotulo-cfem">
-Ano
-</label>
-
-<select id="filtro-ano">
-</select>
-
-
-<!-- PERÍODO -->
-
-<div id="bloco-periodo">
-
-<label class="rotulo-cfem">
-Período
-</label>
-
-<div id="controle-periodo">
-
-<button
-    id="botao-ano-completo"
-    class="botao-periodo ativo"
-    type="button">
-Ano completo
-</button>
-
-<button
-    id="botao-selecionar-meses"
-    class="botao-periodo"
-    type="button">
-Selecionar meses
-</button>
-
-</div>
-
-<div id="periodo-compacto">
-
-<div id="periodo-compacto-texto">
-Período selecionado
-
-<strong id="periodo-compacto-valor">
-Ano completo
-</strong>
-
-</div>
-
-<button
-    id="botao-alterar-meses"
-    type="button">
-Alterar meses
-</button>
-
-</div>
-
-<div id="painel-meses">
-
-<div class="grade-meses">
-
-<label class="item-mes"><input type="checkbox" class="checkbox-mes" value="1">Janeiro</label>
-<label class="item-mes"><input type="checkbox" class="checkbox-mes" value="2">Fevereiro</label>
-<label class="item-mes"><input type="checkbox" class="checkbox-mes" value="3">Março</label>
-<label class="item-mes"><input type="checkbox" class="checkbox-mes" value="4">Abril</label>
-<label class="item-mes"><input type="checkbox" class="checkbox-mes" value="5">Maio</label>
-<label class="item-mes"><input type="checkbox" class="checkbox-mes" value="6">Junho</label>
-<label class="item-mes"><input type="checkbox" class="checkbox-mes" value="7">Julho</label>
-<label class="item-mes"><input type="checkbox" class="checkbox-mes" value="8">Agosto</label>
-<label class="item-mes"><input type="checkbox" class="checkbox-mes" value="9">Setembro</label>
-<label class="item-mes"><input type="checkbox" class="checkbox-mes" value="10">Outubro</label>
-<label class="item-mes"><input type="checkbox" class="checkbox-mes" value="11">Novembro</label>
-<label class="item-mes"><input type="checkbox" class="checkbox-mes" value="12">Dezembro</label>
-
-</div>
-
-<div class="acoes-meses">
-
-<button
-    id="selecionar-todos-meses"
-    class="botao-meses"
-    type="button">
-Todos
-</button>
-
-<button
-    id="limpar-meses"
-    class="botao-meses"
-    type="button">
-Limpar
-</button>
-
-<button
-    id="botao-concluir-meses"
-    type="button">
-Aplicar período
-</button>
-
-</div>
-
-<div id="resumo-meses">
-Todos os meses
-</div>
-
-<div id="aviso-meses">
-Selecione pelo menos um mês antes de aplicar o período.
-</div>
-
-</div>
-
-</div>
-
-
-<!-- SUBSTÂNCIA -->
-
-<label class="rotulo-cfem">
-Substância mineral
-</label>
-
-<input
-    id="busca-substancia"
-    value="Todas as substâncias"
-    autocomplete="off"
->
-
-<div id="lista-substancias">
-</div>
-
-
-<!-- MUNICÍPIO -->
-
-<label class="rotulo-cfem">
-Município
-</label>
-
-<input
-    id="busca-municipio"
-    placeholder="Digite o nome do município..."
-    autocomplete="off"
->
-
-<div id="lista-municipios">
-</div>
-
-
-<button
-    id="botao-voltar-mg"
-    type="button">
-Visualizar todo o estado
-</button>
-
-
-<!-- ========================================================
-     INDICADORES
-     ======================================================== -->
-
-<div class="secao">
-
-<div class="secao-titulo">
-Indicadores da consulta
-</div>
-
-<div class="grade-indicadores">
-
-
-<div class="cartao-indicador total">
-
-<div class="indicador-rotulo">
-CFEM total
-</div>
-
-<div
-    id="indicador-total"
-    class="indicador-valor">
-R$ 0,00
-</div>
-
-</div>
-
-
-<div class="cartao-indicador">
-
-<div class="indicador-rotulo">
-Municípios com arrecadação
-</div>
-
-<div
-    id="indicador-municipios"
-    class="indicador-valor">
-0
-</div>
-
-</div>
-
-
-<div class="cartao-indicador">
-
-<div class="indicador-rotulo">
-Maior arrecadação municipal
-</div>
-
-<div
-    id="indicador-maior-valor"
-    class="indicador-valor">
-R$ 0,00
-</div>
-
-<div
-    id="indicador-maior-municipio"
-    class="indicador-detalhe">
-—
-</div>
-
-</div>
-
-</div>
-
-</div>
-
-
-<!-- ========================================================
-     RANKING
-     ======================================================== -->
-
-<div class="secao">
-
-<div class="secao-titulo">
-Ranking municipal — TOP 10
-</div>
-
-<div id="lista-ranking">
-</div>
-
-</div>
-
-
-<!-- ========================================================
-     MUNICÍPIO SELECIONADO
-     ======================================================== -->
-
-<div id="painel-municipio">
-
-<div
-style="
-font-size:9px;
-color:#777;
-text-transform:uppercase;
-">
-Município selecionado
-</div>
-
-<div id="municipio-nome">
-—
-</div>
-
-
-<div class="municipio-grade">
-
-
-<div class="municipio-cartao principal">
-
-<div
-    id="municipio-valor-rotulo"
-    class="municipio-rotulo">
-CFEM
-</div>
-
-<div
-    id="municipio-valor"
-    class="municipio-valor">
-R$ 0,00
-</div>
-
-</div>
-
-
-<div class="municipio-cartao">
-
-<div class="municipio-rotulo">
-Participação em MG
-</div>
-
-<div
-    id="municipio-participacao"
-    class="municipio-valor">
-0,00%
-</div>
-
-</div>
-
-
-<div class="municipio-cartao">
-
-<div class="municipio-rotulo">
-Posição estadual
-</div>
-
-<div
-    id="municipio-posicao"
-    class="municipio-valor">
-—
-</div>
-
-</div>
-
-</div>
-
-
-<!-- SÉRIE -->
-
-<div class="secao">
-
-<div class="secao-titulo">
-Série histórica da CFEM
-</div>
-
-<div
-    id="serie-substancia"
-    style="
-    font-size:9px;
-    color:#777;
-    margin-bottom:4px;
-    ">
-</div>
-
-<div
-    id="serie-periodo"
-    style="
-    font-size:9px;
-    color:#777;
-    margin-bottom:7px;
-    ">
-</div>
-
-<div id="serie-barras">
-</div>
-
-<div
-    id="serie-nota"
-    class="serie-nota">
-</div>
-
-</div>
-
-</div>
-
-
-<!-- ========================================================
-     DADOS
-     ======================================================== -->
-
-<div class="secao">
-
-<div class="secao-titulo">
-Dados e informações
-</div>
-
-<div class="botoes-etapa9">
-
-<button
-    id="botao-download-csv"
-    class="botao-etapa9"
-    type="button">
-Baixar consulta CSV
-</button>
-
-<button
-    id="botao-sobre"
-    class="botao-etapa9"
-    type="button">
-Sobre o WebGIS
-</button>
-
-</div>
-
-
-<div id="info-atualizacao-painel">
-
-<b>Atualização dos dados ANM:</b>
-__DATA_ATUALIZACAO_ANM__
-
-</div>
-
-</div>
-
-
-<div id="status-consulta">
-
-<b>Exibindo:</b>
-
-<span id="status-ano">
-__ANO_PADRAO__
-</span>
-
-·
-
-<span id="status-periodo">
-Ano completo
-</span>
-
-·
-
-<span id="status-substancia">
-Todas as substâncias
-</span>
-
-</div>
-
-</div>
-
-
-<!-- ========================================================
-     LEGENDA
-     ======================================================== -->
-
-<div id="legenda-cfem">
-
-<div class="legenda-titulo">
-CFEM arrecadada
-</div>
-
-<div class="legenda-item">
-<span
-class="caixa-cor"
-style="background:#eeeeee">
-</span>
-Sem arrecadação
-</div>
-
-<div class="legenda-item">
-<span
-class="caixa-cor"
-style="background:#ffffcc">
-</span>
-Até R$ 10 mil
-</div>
-
-<div class="legenda-item">
-<span
-class="caixa-cor"
-style="background:#ffeda0">
-</span>
-R$ 10 mil – R$ 100 mil
-</div>
-
-<div class="legenda-item">
-<span
-class="caixa-cor"
-style="background:#fed976">
-</span>
-R$ 100 mil – R$ 1 milhão
-</div>
-
-<div class="legenda-item">
-<span
-class="caixa-cor"
-style="background:#feb24c">
-</span>
-R$ 1 mi – R$ 10 milhões
-</div>
-
-<div class="legenda-item">
-<span
-class="caixa-cor"
-style="background:#f03b20">
-</span>
-R$ 10 mi – R$ 100 milhões
-</div>
-
-<div class="legenda-item">
-<span
-class="caixa-cor"
-style="background:#bd0026">
-</span>
-Acima de R$ 100 milhões
-</div>
-
-
-<div class="creditos-cfem">
-
-<b>Autoria:</b>
-Melissa Carvalho
-
-<br>
-
-<b>Atualização dos dados ANM:</b>
-__DATA_ATUALIZACAO_ANM__
-
-<br>
-
-<b>Fontes:</b>
-Malha Municipal de Minas Gerais — IBGE;
-
-<br>
-
-Arrecadação da CFEM (2022–2026) — ANM.
-
-</div>
-
-</div>
-
-
-<!-- ========================================================
-     SOBRE
-     ======================================================== -->
-
-<div id="modal-sobre-cfem">
-
-<div id="conteudo-modal">
-
-<button
-    id="fechar-modal"
-    type="button">
-×
-</button>
-
-<h2>
-Sobre o WebGIS CFEM
-</h2>
-
-<p>
-Este WebGIS apresenta a distribuição espacial
-da arrecadação da Compensação Financeira pela
-Exploração de Recursos Minerais (CFEM) nos
-municípios de Minas Gerais.
-</p>
-
-<p>
-A consulta pode ser realizada por ano, por um
-ou vários meses, por substância mineral e por
-município.
-</p>
-
-<p>
-Ao selecionar vários meses, os valores apresentados
-no mapa, indicadores, ranking, município e arquivo
-CSV correspondem à soma dos meses selecionados.
-</p>
-
-<h4>Série histórica</h4>
-
-<p>
-Quando meses específicos são selecionados, a série
-histórica utiliza os mesmos meses em todos os anos.
-Isso permite comparar períodos equivalentes.
-</p>
-
-<h4>Fontes</h4>
-
-<p>
-Dados de arrecadação: Agência Nacional de Mineração — ANM.
-</p>
-
-<p>
-Malha municipal: Instituto Brasileiro de Geografia
-e Estatística — IBGE.
-</p>
-
-<h4>Metadados</h4>
-
-<table class="tabela-metadados">
-
-<tr>
-<td>Autoria</td>
-<td>Melissa Carvalho</td>
-</tr>
-
-<tr>
-<td>Atualização dos dados ANM</td>
-<td>__DATA_ATUALIZACAO_ANM__</td>
-</tr>
-
-<tr>
-<td>WebGIS gerado em</td>
-<td>__DATA_GERACAO_WEBGIS__</td>
-</tr>
-
-<tr>
-<td>Dados CFEM</td>
-<td>Agência Nacional de Mineração — ANM</td>
-</tr>
-
-<tr>
-<td>Malha municipal</td>
-<td>IBGE</td>
-</tr>
-
-</table>
-
-</div>
-
-</div>
-
-
-<script>
-
-document.addEventListener(
-"DOMContentLoaded",
-async function() {
-
-
-/* ==========================================================
-   CONSTANTES
-   ========================================================== */
-
-const mapa = __MAPA_JS__;
-
-const camadaMunicipios =
-    __CAMADA_MUNICIPIOS__;
-
-const anos =
-    __ANOS_JSON__;
-
-const substancias =
-    __SUBSTANCIAS_JSON__;
-
-const principais =
-    __PRINCIPAIS_JSON__;
-
-const municipiosBusca =
-    __MUNICIPIOS_JSON__;
-
-const limitesMG =
-    __LIMITES_MG__;
-
-const anoPadrao =
-    __ANO_PADRAO__;
-
-const dataAtualizacaoANM =
-    __DATA_ATUALIZACAO_ANM_JSON__;
-
-
-const nomesMeses = {
-
-    1:"Janeiro",
-    2:"Fevereiro",
-    3:"Março",
-    4:"Abril",
-    5:"Maio",
-    6:"Junho",
-    7:"Julho",
-    8:"Agosto",
-    9:"Setembro",
-    10:"Outubro",
-    11:"Novembro",
-    12:"Dezembro"
-
-};
-
-
-const abreviacoesMeses = {
-
-    1:"Jan",
-    2:"Fev",
-    3:"Mar",
-    4:"Abr",
-    5:"Mai",
-    6:"Jun",
-    7:"Jul",
-    8:"Ago",
-    9:"Set",
-    10:"Out",
-    11:"Nov",
-    12:"Dez"
-
-};
-
-
-/* ==========================================================
-   ESTADO
-   ========================================================== */
-
-let dadosCFEM = null;
-
-let substanciaSelecionada =
-    "TODAS";
-
-/*
-    null = ano completo.
-
-    Array = meses selecionados.
-*/
-let mesesSelecionados =
-    null;
-
-
-let codigoMunicipioSelecionado =
-    null;
-
-let nomeMunicipioSelecionado =
-    null;
-
-let camadaMunicipioSelecionado =
-    null;
-
-let valoresConsultaAtual =
-    new Map();
-
-let rankingConsultaAtual =
-    [];
-
-
-/* ==========================================================
-   ELEMENTOS
-   ========================================================== */
-
-const painel =
-document.getElementById(
-    "painel-cfem"
-);
-
-const botaoConsulta =
-document.getElementById(
-    "botao-mobile-consulta"
-);
-
-const fecharPainel =
-document.getElementById(
-    "fechar-painel-mobile"
-);
-
-const botaoLegenda =
-document.getElementById(
-    "botao-mobile-legenda"
-);
-
-const legenda =
-document.getElementById(
-    "legenda-cfem"
-);
-
-
-const filtroAno =
-document.getElementById(
-    "filtro-ano"
-);
-
-
-const botaoAnoCompleto =
-document.getElementById(
-    "botao-ano-completo"
-);
-
-const botaoSelecionarMeses =
-document.getElementById(
-    "botao-selecionar-meses"
-);
-
-const painelMeses =
-document.getElementById(
-    "painel-meses"
-);
-
-const checkboxesMeses =
-Array.from(
-    document.querySelectorAll(
-        ".checkbox-mes"
-    )
-);
-
-const selecionarTodosMeses =
-document.getElementById(
-    "selecionar-todos-meses"
-);
-
-const limparMeses =
-document.getElementById(
-    "limpar-meses"
-);
-
-const resumoMeses =
-document.getElementById(
-    "resumo-meses"
-);
-
-
-const buscaSubstancia =
-document.getElementById(
-    "busca-substancia"
-);
-
-const listaSubstancias =
-document.getElementById(
-    "lista-substancias"
-);
-
-const buscaMunicipio =
-document.getElementById(
-    "busca-municipio"
-);
-
-const listaMunicipios =
-document.getElementById(
-    "lista-municipios"
-);
-
-const botaoVoltarMG =
-document.getElementById(
-    "botao-voltar-mg"
-);
-
-
-const indicadorTotal =
-document.getElementById(
-    "indicador-total"
-);
-
-const indicadorMunicipios =
-document.getElementById(
-    "indicador-municipios"
-);
-
-const indicadorMaiorValor =
-document.getElementById(
-    "indicador-maior-valor"
-);
-
-const indicadorMaiorMunicipio =
-document.getElementById(
-    "indicador-maior-municipio"
-);
-
-
-const listaRanking =
-document.getElementById(
-    "lista-ranking"
-);
-
-
-const painelMunicipio =
-document.getElementById(
-    "painel-municipio"
-);
-
-const municipioNome =
-document.getElementById(
-    "municipio-nome"
-);
-
-const municipioValor =
-document.getElementById(
-    "municipio-valor"
-);
-
-const municipioValorRotulo =
-document.getElementById(
-    "municipio-valor-rotulo"
-);
-
-const municipioParticipacao =
-document.getElementById(
-    "municipio-participacao"
-);
-
-const municipioPosicao =
-document.getElementById(
-    "municipio-posicao"
-);
-
-
-const serieSubstancia =
-document.getElementById(
-    "serie-substancia"
-);
-
-const seriePeriodo =
-document.getElementById(
-    "serie-periodo"
-);
-
-const serieBarras =
-document.getElementById(
-    "serie-barras"
-);
-
-const serieNota =
-document.getElementById(
-    "serie-nota"
-);
-
-
-const statusAno =
-document.getElementById(
-    "status-ano"
-);
-
-const statusPeriodo =
-document.getElementById(
-    "status-periodo"
-);
-
-const statusSubstancia =
-document.getElementById(
-    "status-substancia"
-);
-
-
-const modal =
-document.getElementById(
-    "modal-sobre-cfem"
-);
-
-
-/* ==========================================================
-   MOBILE
-   ========================================================== */
-
-function ehMobile() {
-
-    return window.matchMedia(
-        "(max-width:768px)"
-    ).matches;
-
-}
-
-
-function abrirPainelMobile() {
-
-    if (!ehMobile())
-        return;
-
-    legenda.classList.remove(
-        "aberta"
-    );
-
-    painel.classList.add(
-        "aberto"
-    );
-
-    document.body.classList.add(
-        "painel-mobile-aberto"
-    );
-
-}
-
-
-function fecharPainelMobile() {
-
-    painel.classList.remove(
-        "aberto"
-    );
-
-    document.body.classList.remove(
-        "painel-mobile-aberto"
-    );
-
-}
-
-
-botaoConsulta.onclick =
-function() {
-
-    abrirPainelMobile();
-
-};
-
-
-fecharPainel.onclick =
-function() {
-
-    fecharPainelMobile();
-
-};
-
-
-botaoLegenda.onclick =
-function() {
-
-    legenda.classList.toggle(
-        "aberta"
-    );
-
-    botaoLegenda.textContent =
-        legenda.classList.contains(
-            "aberta"
-        )
-        ?
-        "Fechar legenda"
-        :
-        "Legenda";
-
-};
-
-
-/* ==========================================================
-   MAPAS AUXILIARES
-   ========================================================== */
-
-const municipioPorCodigo =
-    new Map();
-
-const layerPorCodigo =
-    new Map();
-
-
-municipiosBusca.forEach(
-function(m) {
-
-    municipioPorCodigo.set(
-        String(m.CD_MUN),
-        m
-    );
-
-});
-
-
-camadaMunicipios.eachLayer(
-function(layer) {
-
-    if (!layer.feature)
-        return;
-
-    const codigo =
-        String(
-            layer.feature
-            .properties
-            .CD_MUN
-        );
-
-    layerPorCodigo.set(
-        codigo,
-        layer
-    );
-
-});
-
-
-/* ==========================================================
-   FUNÇÕES GERAIS
-   ========================================================== */
-
-function normalizar(texto) {
-
-    return String(texto || "")
-    .normalize("NFD")
-    .replace(
-        /[\u0300-\u036f]/g,
-        ""
-    )
-    .toLowerCase()
-    .trim();
-
-}
-
-
-function moeda(valor) {
-
-    return Number(valor || 0)
-    .toLocaleString(
-        "pt-BR",
-        {
-            style:"currency",
-            currency:"BRL"
-        }
-    );
-
-}
-
-
-function moedaCompacta(valor) {
-
-    valor =
-        Number(valor || 0);
-
-    if (valor >= 1000000000) {
-
-        return (
-            "R$ " +
-            (
-                valor /
-                1000000000
-            )
-            .toLocaleString(
-                "pt-BR",
-                {
-                    maximumFractionDigits:2
-                }
-            )
-            +
-            " bi"
-        );
-
-    }
-
-    if (valor >= 1000000) {
-
-        return (
-            "R$ " +
-            (
-                valor /
-                1000000
-            )
-            .toLocaleString(
-                "pt-BR",
-                {
-                    maximumFractionDigits:2
-                }
-            )
-            +
-            " mi"
-        );
-
-    }
-
-    if (valor >= 1000) {
-
-        return (
-            "R$ " +
-            (
-                valor /
-                1000
-            )
-            .toLocaleString(
-                "pt-BR",
-                {
-                    maximumFractionDigits:2
-                }
-            )
-            +
-            " mil"
-        );
-
-    }
-
-    return moeda(valor);
-
-}
-
-
-function corCFEM(valor) {
-
-    valor =
-        Number(valor || 0);
-
-    if (valor <= 0)
-        return "#eeeeee";
-
-    if (valor <= 10000)
-        return "#ffffcc";
-
-    if (valor <= 100000)
-        return "#ffeda0";
-
-    if (valor <= 1000000)
-        return "#fed976";
-
-    if (valor <= 10000000)
-        return "#feb24c";
-
-    if (valor <= 100000000)
-        return "#f03b20";
-
-    return "#bd0026";
-
-}
-
-
-function aplicarEstiloNormal(
-layer
-) {
-
-    const valor =
-        Number(
-            layer.feature
-            .properties
-            .CFEM_Total || 0
-        );
-
-    layer.setStyle({
-
-        fillColor:
-            corCFEM(valor),
-
-        color:
-            "#555555",
-
-        weight:
-            0.6,
-
-        fillOpacity:
-            0.80
-
-    });
-
-}
-
-
-function aplicarDestaque() {
-
-    if (
-        !camadaMunicipioSelecionado
-    )
-        return;
-
-    camadaMunicipioSelecionado
-    .setStyle({
-
-        color:"#000000",
-
-        weight:4,
-
-        fillOpacity:0.95
-
-    });
-
-    if (
-        camadaMunicipioSelecionado
-        .bringToFront
-    ) {
-
-        camadaMunicipioSelecionado
-        .bringToFront();
-
-    }
-
-}
-
-
-/* ==========================================================
-   FUNÇÕES DE PERÍODO
-   ========================================================== */
-
-const periodoCompacto =
-document.getElementById(
-    "periodo-compacto"
-);
-
-const periodoCompactoValor =
-document.getElementById(
-    "periodo-compacto-valor"
-);
-
-const botaoAlterarMeses =
-document.getElementById(
-    "botao-alterar-meses"
-);
-
-const botaoConcluirMeses =
-document.getElementById(
-    "botao-concluir-meses"
-);
-
-const avisoMeses =
-document.getElementById(
-    "aviso-meses"
-);
-
-/*
-   mesesSelecionados = período efetivamente aplicado.
-   mesesEmEdicao = seleção temporária do editor.
-*/
-let mesesEmEdicao = null;
-
-
-function obterMesesAtivos() {
-
-    if (
-        mesesSelecionados === null
-    ) {
-
-        return [
-            1,2,3,4,5,6,
-            7,8,9,10,11,12
-        ];
-
-    }
-
-    return mesesSelecionados
-        .slice()
-        .sort(
-            (a,b) => a-b
-        );
-
-}
-
-
-function textoPeriodo(
-compacto=false
-) {
-
-    if (
-        mesesSelecionados === null
-    ) {
-
-        return "Ano completo";
-
-    }
-
-    if (
-        mesesSelecionados.length === 0
-    ) {
-
-        return "Nenhum mês";
-
-    }
-
-    const meses =
-        mesesSelecionados
-        .slice()
-        .sort(
-            (a,b) => a-b
-        );
-
-    if (
-        meses.length === 12
-    ) {
-
-        return compacto
-            ? "Jan–Dez"
-            : "Todos os meses";
-
-    }
-
-    if (
-        meses.length === 1
-    ) {
-
-        return compacto
-            ? abreviacoesMeses[meses[0]]
-            : nomesMeses[meses[0]];
-
-    }
-
-    let consecutivos = true;
-
-    for (
-        let i = 1;
-        i < meses.length;
-        i++
-    ) {
-
-        if (
-            meses[i] !==
-            meses[i - 1] + 1
-        ) {
-
-            consecutivos = false;
-            break;
-
-        }
-
-    }
-
-    if (consecutivos) {
-
-        return (
-            abreviacoesMeses[meses[0]]
-            +
-            "–"
-            +
-            abreviacoesMeses[
-                meses[meses.length - 1]
-            ]
-        );
-
-    }
-
-    return meses
-        .map(
-            m => abreviacoesMeses[m]
-        )
-        .join(" + ");
-
-}
-
-
-function textoMesesEmEdicao() {
-
-    if (
-        !mesesEmEdicao ||
-        mesesEmEdicao.length === 0
-    ) {
-
-        return "Nenhum mês selecionado";
-
-    }
-
-    const meses =
-        mesesEmEdicao
-        .slice()
-        .sort(
-            (a,b) => a-b
-        );
-
-    if (
-        meses.length === 12
-    ) {
-
-        return "Todos os meses";
-
-    }
-
-    if (
-        meses.length === 1
-    ) {
-
-        return nomesMeses[
-            meses[0]
-        ];
-
-    }
-
-    let consecutivos = true;
-
-    for (
-        let i = 1;
-        i < meses.length;
-        i++
-    ) {
-
-        if (
-            meses[i] !==
-            meses[i - 1] + 1
-        ) {
-
-            consecutivos = false;
-            break;
-
-        }
-
-    }
-
-    if (consecutivos) {
-
-        return (
-            abreviacoesMeses[meses[0]]
-            +
-            "–"
-            +
-            abreviacoesMeses[
-                meses[meses.length - 1]
-            ]
-        );
-
-    }
-
-    return meses
-        .map(
-            m => abreviacoesMeses[m]
-        )
-        .join(" + ");
-
-}
-
-
-function atualizarResumoMeses() {
-
-    const texto =
-        textoPeriodo(false);
-
-    periodoCompactoValor
-    .textContent =
-        texto;
-
-    if (
-        painelMeses.classList
-        .contains("aberto")
-    ) {
-
-        resumoMeses.textContent =
-            textoMesesEmEdicao();
-
-    }
-
-    else {
-
-        resumoMeses.textContent =
-            texto;
-
-    }
-
-}
-
-
-function sincronizarCheckboxes() {
-
-    const meses =
-        mesesEmEdicao || [];
-
-    checkboxesMeses.forEach(
-    function(check) {
-
-        check.checked =
-            meses.includes(
-                Number(check.value)
-            );
-
-    });
-
-}
-
-
-function ativarAnoCompleto() {
-
-    mesesSelecionados = null;
-    mesesEmEdicao = null;
-
-    checkboxesMeses.forEach(
-    function(check) {
-
-        check.checked = false;
-
-    });
-
-    botaoAnoCompleto
-    .classList.add(
-        "ativo"
-    );
-
-    botaoSelecionarMeses
-    .classList.remove(
-        "ativo"
-    );
-
-    painelMeses
-    .classList.remove(
-        "aberto"
-    );
-
-    periodoCompacto
-    .classList.remove(
-        "visivel"
-    );
-
-    avisoMeses
-    .classList.remove(
-        "visivel"
-    );
-
-    atualizarResumoMeses();
-
-    if (dadosCFEM) {
-        atualizarMapa();
-    }
-
-}
-
-
-function abrirEditorMeses() {
-
-    botaoAnoCompleto
-    .classList.remove(
-        "ativo"
-    );
-
-    botaoSelecionarMeses
-    .classList.add(
-        "ativo"
-    );
-
-    if (
-        mesesSelecionados === null
-    ) {
-
-        mesesEmEdicao =
-            [
-                1,2,3,4,5,6,
-                7,8,9,10,11,12
-            ];
-
-    }
-
-    else {
-
-        mesesEmEdicao =
-            mesesSelecionados.slice();
-
-    }
-
-    sincronizarCheckboxes();
-
-    periodoCompacto
-    .classList.remove(
-        "visivel"
-    );
-
-    painelMeses
-    .classList.add(
-        "aberto"
-    );
-
-    avisoMeses
-    .classList.remove(
-        "visivel"
-    );
-
-    atualizarResumoMeses();
-
-}
-
-
-function concluirSelecaoMeses() {
-
-    if (
-        !mesesEmEdicao ||
-        mesesEmEdicao.length === 0
-    ) {
-
-        avisoMeses
-        .classList.add(
-            "visivel"
-        );
-
-        return;
-
-    }
-
-    mesesSelecionados =
-        mesesEmEdicao
-        .slice()
-        .sort(
-            (a,b) => a-b
-        );
-
-    avisoMeses
-    .classList.remove(
-        "visivel"
-    );
-
-    painelMeses
-    .classList.remove(
-        "aberto"
-    );
-
-    periodoCompacto
-    .classList.add(
-        "visivel"
-    );
-
-    atualizarResumoMeses();
-
-    if (dadosCFEM) {
-        atualizarMapa();
-    }
-
-}
-
-
-botaoAnoCompleto.onclick =
-function() {
-
-    ativarAnoCompleto();
-
-};
-
-
-botaoSelecionarMeses.onclick =
-function() {
-
-    abrirEditorMeses();
-
-};
-
-
-botaoAlterarMeses.onclick =
-function() {
-
-    abrirEditorMeses();
-
-};
-
-
-botaoConcluirMeses.onclick =
-function() {
-
-    concluirSelecaoMeses();
-
-};
-
-
-checkboxesMeses.forEach(
-function(check) {
-
-    check.addEventListener(
-        "change",
-        function() {
-
-            mesesEmEdicao =
-                checkboxesMeses
-                .filter(
-                    c => c.checked
-                )
-                .map(
-                    c => Number(c.value)
-                )
-                .sort(
-                    (a,b) => a-b
-                );
-
-            avisoMeses
-            .classList.toggle(
-                "visivel",
-                mesesEmEdicao.length === 0
-            );
-
-            atualizarResumoMeses();
-
-        }
-    );
-
-});
-
-
-selecionarTodosMeses.onclick =
-function() {
-
-    mesesEmEdicao =
-        [
-            1,2,3,4,5,6,
-            7,8,9,10,11,12
-        ];
-
-    sincronizarCheckboxes();
-
-    avisoMeses
-    .classList.remove(
-        "visivel"
-    );
-
-    atualizarResumoMeses();
-
-};
-
-
-limparMeses.onclick =
-function() {
-
-    mesesEmEdicao = [];
-
-    sincronizarCheckboxes();
-
-    avisoMeses
-    .classList.add(
-        "visivel"
-    );
-
-    atualizarResumoMeses();
-
-};
-
-
-/* ==========================================================
-   ANOS
-   ========================================================== */
-
-anos
-.slice()
-.sort(
-    (a,b) => b-a
+""",
+    unsafe_allow_html=True,
 )
-.forEach(
-function(ano) {
 
-    const op =
-        document.createElement(
-            "option"
-        );
 
-    op.value =
-        ano;
-
-    op.textContent =
-        ano;
-
-    if (
-        Number(ano) ===
-        Number(anoPadrao)
-    ) {
-
-        op.selected =
-            true;
-
-    }
-
-    filtroAno
-    .appendChild(op);
-
-});
-
-
-/* ==========================================================
-   SUBSTÂNCIAS
-   ========================================================== */
-
-function mostrarSubstancias(
-texto
-) {
-
-    listaSubstancias
-    .innerHTML = "";
-
-
-    const todas =
-        document.createElement(
-            "div"
-        );
-
-    todas.className =
-        "item-substancia item-principal";
-
-    todas.textContent =
-        "Todas as substâncias";
-
-
-    todas.onclick =
-    function() {
-
-        substanciaSelecionada =
-            "TODAS";
-
-        buscaSubstancia.value =
-            "Todas as substâncias";
-
-        listaSubstancias
-        .style.display =
-            "none";
-
-        atualizarMapa();
-
-    };
-
-
-    listaSubstancias
-    .appendChild(todas);
-
-
-    const busca =
-        normalizar(texto);
-
-
-    let resultados =
-        substancias.filter(
-            function(s) {
-
-                return (
-                    !busca ||
-                    normalizar(s)
-                    .includes(busca)
-                );
-
-            }
-        );
-
-
-    if (!busca) {
-
-        resultados.sort(
-        function(a,b) {
-
-            const ia =
-                principais.indexOf(a);
-
-            const ib =
-                principais.indexOf(b);
-
-            if (
-                ia !== -1 &&
-                ib === -1
-            )
-                return -1;
-
-            if (
-                ia === -1 &&
-                ib !== -1
-            )
-                return 1;
-
-            if (
-                ia !== -1 &&
-                ib !== -1
-            )
-                return ia - ib;
-
-            return a.localeCompare(
-                b,
-                "pt-BR"
-            );
-
-        });
-
-    }
-
-
-    resultados
-    .slice(0,60)
-    .forEach(
-    function(s) {
-
-        const item =
-            document.createElement(
-                "div"
-            );
-
-        item.className =
-            "item-substancia";
-
-
-        if (
-            principais.includes(s)
-        ) {
-
-            item.classList.add(
-                "item-principal"
-            );
-
-        }
-
-
-        item.textContent = s;
-
-
-        item.onclick =
-        function() {
-
-            substanciaSelecionada =
-                s;
-
-            buscaSubstancia.value =
-                s;
-
-            listaSubstancias
-            .style.display =
-                "none";
-
-            atualizarMapa();
-
-        };
-
-
-        listaSubstancias
-        .appendChild(item);
-
-    });
-
-
-    listaSubstancias
-    .style.display =
-        "block";
-
-}
-
-
-buscaSubstancia
-.addEventListener(
-"focus",
-function() {
-
-    if (
-        substanciaSelecionada ===
-        "TODAS"
-    ) {
-
-        buscaSubstancia.value =
-            "";
-
-    }
-
-    mostrarSubstancias(
-        buscaSubstancia.value
-    );
-
-});
-
-
-buscaSubstancia
-.addEventListener(
-"input",
-function() {
-
-    mostrarSubstancias(
-        buscaSubstancia.value
-    );
-
-});
-
-
-/* ==========================================================
-   MUNICÍPIOS
-   ========================================================== */
-
-function mostrarMunicipios(
-texto
-) {
-
-    listaMunicipios
-    .innerHTML = "";
-
-    const busca =
-        normalizar(texto);
-
-
-    if (!busca) {
-
-        listaMunicipios
-        .style.display =
-            "none";
-
-        return;
-
-    }
-
-
-    const resultados =
-        municipiosBusca.filter(
-        function(m) {
-
-            return normalizar(
-                m.NM_MUN
-            ).includes(busca);
-
-        });
-
-
-    resultados
-    .slice(0,30)
-    .forEach(
-    function(m) {
-
-        const item =
-            document.createElement(
-                "div"
-            );
-
-        item.className =
-            "item-municipio";
-
-        item.textContent =
-            m.NM_MUN;
-
-
-        item.onclick =
-        function() {
-
-            selecionarMunicipio(
-                m.CD_MUN,
-                m.NM_MUN,
-                true
-            );
-
-        };
-
-
-        listaMunicipios
-        .appendChild(item);
-
-    });
-
-
-    listaMunicipios
-    .style.display =
-        "block";
-
-}
-
-
-buscaMunicipio
-.addEventListener(
-"input",
-function() {
-
-    mostrarMunicipios(
-        buscaMunicipio.value
-    );
-
-});
-
-
-/* ==========================================================
-   SELEÇÃO MUNICIPAL
-   ========================================================== */
-
-function selecionarMunicipio(
-codigo,
-nome,
-fazerZoom
-) {
-
-    codigo =
-        String(codigo);
-
-    codigoMunicipioSelecionado =
-        codigo;
-
-    nomeMunicipioSelecionado =
-        nome;
-
-    buscaMunicipio.value =
-        nome;
-
-    listaMunicipios
-    .style.display =
-        "none";
-
-
-    camadaMunicipios
-    .eachLayer(
-        aplicarEstiloNormal
-    );
-
-
-    camadaMunicipioSelecionado =
-        layerPorCodigo.get(
-            codigo
-        );
-
-
-    aplicarDestaque();
-
-
-    if (
-        fazerZoom === true &&
-        camadaMunicipioSelecionado
-    ) {
-
-        mapa.fitBounds(
-
-            camadaMunicipioSelecionado
-            .getBounds(),
-
-            {
-                padding:[30,30],
-                maxZoom:11
-            }
-
-        );
-
-    }
-
-
-    atualizarPainelMunicipio();
-
-    destacarRanking();
-
-}
-
-
-/* ==========================================================
-   CLIQUE NO MAPA
-   ========================================================== */
-
-camadaMunicipios
-.eachLayer(
-function(layer) {
-
-    const p =
-        layer.feature
-        .properties;
-
-
-    layer.on(
-        "click",
-        function() {
-
-            selecionarMunicipio(
-                p.CD_MUN,
-                p.NM_MUN,
-                false
-            );
-
-        }
-    );
-
-});
-
-
-/* ==========================================================
-   VOLTAR MG
-   ========================================================== */
-
-botaoVoltarMG.onclick =
-function() {
-
-    codigoMunicipioSelecionado =
-        null;
-
-    nomeMunicipioSelecionado =
-        null;
-
-    camadaMunicipioSelecionado =
-        null;
-
-    buscaMunicipio.value =
-        "";
-
-    painelMunicipio
-    .style.display =
-        "none";
-
-    camadaMunicipios
-    .eachLayer(
-        aplicarEstiloNormal
-    );
-
-    destacarRanking();
-
-    mapa.fitBounds(
-        limitesMG
-    );
-
-};
-
-
-/* ==========================================================
-   CARREGAR JSON
-   ========================================================== */
-
-try {
-
-    const resposta =
-        await fetch(
-            "dados_cfem.json?v="
-            +
-            Date.now()
-        );
-
-
-    if (!resposta.ok) {
-
-        throw new Error(
-            "HTTP "
-            +
-            resposta.status
-        );
-
-    }
-
-
-    dadosCFEM =
-        await resposta.json();
-
-}
-
-catch(erro) {
-
-    console.error(
-        "Erro ao carregar dados:",
-        erro
-    );
-
-    return;
-
-}
-
-
-/* ==========================================================
-   OBTER VALORES DA CONSULTA
-   ========================================================== */
-
-function obterValoresConsulta(
-ano
-) {
-
-    const valores =
-        new Map();
-
-    const mesesAtivos =
-        new Set(
-            obterMesesAtivos()
-        );
-
-
-    /*
-       Nenhum mês marcado.
-    */
-
-    if (
-        mesesAtivos.size === 0
-    ) {
-
-        return valores;
-
-    }
-
-
-    const fonte =
-        substanciaSelecionada ===
-        "TODAS"
-        ?
-        dadosCFEM.totais
-        :
-        dadosCFEM.substancias;
-
-
-    fonte.forEach(
-    function(item) {
-
-        if (
-            Number(item.Ano) !==
-            Number(ano)
-        )
-            return;
-
-
-        if (
-            !mesesAtivos.has(
-                Number(item.Mes)
-            )
-        )
-            return;
-
-
-        if (
-            substanciaSelecionada !==
-            "TODAS"
-            &&
-            item["Substância"] !==
-            substanciaSelecionada
-        )
-            return;
-
-
-        const codigo =
-            String(
-                item.CodigoMunicipio
-            );
-
-
-        const anterior =
-            Number(
-                valores.get(
-                    codigo
-                ) || 0
-            );
-
-
-        valores.set(
-            codigo,
-            anterior +
-            Number(
-                item.CFEM_Total || 0
-            )
-        );
-
-    });
-
-
-    return valores;
-
-}
-
-
-/* ==========================================================
-   RANKING
-   ========================================================== */
-
-function gerarRanking(
-valores
-) {
-
-    const ranking = [];
-
-
-    valores.forEach(
-    function(valor,codigo) {
-
-        valor =
-            Number(valor || 0);
-
-        if (valor <= 0)
-            return;
-
-
-        const m =
-            municipioPorCodigo.get(
-                String(codigo)
-            );
-
-        if (!m)
-            return;
-
-
-        ranking.push({
-
-            codigo:
-                String(codigo),
-
-            nome:
-                m.NM_MUN,
-
-            valor:
-                valor
-
-        });
-
-    });
-
-
-    ranking.sort(
-        (a,b) =>
-            b.valor -
-            a.valor
-            ||
-            a.nome.localeCompare(
-                b.nome,
-                "pt-BR"
-            )
-    );
-
-
-    return ranking;
-
-}
-
-
-/* ==========================================================
-   INDICADORES
-   ========================================================== */
-
-function atualizarIndicadores() {
-
-    let total = 0;
-
-    let quantidade = 0;
-
-
-    valoresConsultaAtual
-    .forEach(
-    function(v) {
-
-        total +=
-            Number(v || 0);
-
-        if (
-            Number(v) > 0
-        ) {
-
-            quantidade++;
-
-        }
-
-    });
-
-
-    indicadorTotal
-    .textContent =
-        moeda(total);
-
-
-    indicadorMunicipios
-    .textContent =
-        quantidade
-        .toLocaleString(
-            "pt-BR"
-        );
-
-
-    if (
-        rankingConsultaAtual.length
-    ) {
-
-        indicadorMaiorValor
-        .textContent =
-            moeda(
-                rankingConsultaAtual[
-                    0
-                ].valor
-            );
-
-
-        indicadorMaiorMunicipio
-        .textContent =
-            rankingConsultaAtual[
-                0
-            ].nome;
-
-    }
-
-    else {
-
-        indicadorMaiorValor
-        .textContent =
-            moeda(0);
-
-        indicadorMaiorMunicipio
-        .textContent =
-            "—";
-
-    }
-
-}
-
-
-/* ==========================================================
-   RANKING VISUAL
-   ========================================================== */
-
-function atualizarRanking() {
-
-    listaRanking
-    .innerHTML = "";
-
-
-    rankingConsultaAtual
-    .slice(0,10)
-    .forEach(
-    function(item,i) {
-
-        const linha =
-            document.createElement(
-                "div"
-            );
-
-        linha.className =
-            "item-ranking";
-
-        linha.dataset.codigo =
-            item.codigo;
-
-
-        linha.innerHTML =
-
-            '<div class="ranking-posicao">'
-            +
-            (i + 1)
-            +
-            'º</div>'
-
-            +
-
-            '<div class="ranking-municipio">'
-            +
-            item.nome
-            +
-            '</div>'
-
-            +
-
-            '<div class="ranking-valor">'
-            +
-            moedaCompacta(
-                item.valor
-            )
-            +
-            '</div>';
-
-
-        linha.onclick =
-        function() {
-
-            selecionarMunicipio(
-                item.codigo,
-                item.nome,
-                true
-            );
-
-
-            if (ehMobile()) {
-
-                fecharPainelMobile();
-
-            }
-
-        };
-
-
-        listaRanking
-        .appendChild(linha);
-
-    });
-
-
-    destacarRanking();
-
-}
-
-
-function destacarRanking() {
-
-    document
-    .querySelectorAll(
-        ".item-ranking"
+# ============================================================
+# 5. FUNÇÕES DE NORMALIZAÇÃO
+# ============================================================
+
+def norm(valor):
+    return (
+        unicodedata.normalize("NFKD", str(valor))
+        .encode("ascii", "ignore")
+        .decode()
+        .lower()
+        .replace(" ", "")
+        .replace("_", "")
+        .replace("-", "")
     )
-    .forEach(
-    function(item) {
-
-        item.classList.toggle(
-
-            "selecionado",
-
-            codigoMunicipioSelecionado
-            &&
-            String(
-                item.dataset.codigo
-            )
-            ===
-            String(
-                codigoMunicipioSelecionado
-            )
-
-        );
-
-    });
-
-}
 
 
-/* ==========================================================
-   SÉRIE HISTÓRICA
-   ========================================================== */
+def somente_digitos(valor):
+    if pd.isna(valor):
+        return ""
 
-function obterSerie(
-codigo
-) {
+    texto = str(valor).strip()
+    texto = re.sub(r"\.0$", "", texto)
 
-    const serie =
-        new Map();
+    return re.sub(r"\D", "", texto)
 
 
-    anos.forEach(
-        ano =>
-        serie.set(
-            Number(ano),
-            0
-        )
-    );
+def encontrar_coluna(colunas, termos):
+    """
+    Procura uma coluna priorizando os termos informados.
+    """
+
+    for termo in termos:
+        for coluna in colunas:
+            if termo in norm(coluna):
+                return coluna
+
+    return None
 
 
-    const mesesAtivos =
-        new Set(
-            obterMesesAtivos()
-        );
+# ============================================================
+# 6. PROCESSO ANM
+# ============================================================
+
+def criar_chave_processo(numero, ano=None):
+
+    numero_digitos = somente_digitos(numero)
+    ano_digitos = somente_digitos(ano)
+
+    # Ex.: 8301952006
+    if len(numero_digitos) >= 10:
+        return numero_digitos
+
+    # Ex.: Processo 830195 + Ano 2006
+    if numero_digitos and len(ano_digitos) >= 4:
+        return numero_digitos + ano_digitos[-4:]
+
+    return numero_digitos
 
 
-    const fonte =
-        substanciaSelecionada ===
-        "TODAS"
-        ?
-        dadosCFEM.totais
-        :
-        dadosCFEM.substancias;
+def formatar_processo(chave):
+
+    chave = somente_digitos(chave)
+
+    if len(chave) < 10:
+        return chave
+
+    numero = chave[:-4]
+    ano = chave[-4:]
+
+    try:
+        numero = f"{int(numero):,}".replace(",", ".")
+    except Exception:
+        pass
+
+    return f"{numero}/{ano}"
 
 
-    fonte.forEach(
-    function(item) {
+# ============================================================
+# 7. FORMATAÇÃO BRASILEIRA
+# ============================================================
 
-        if (
-            String(
-                item.CodigoMunicipio
-            )
-            !==
-            String(codigo)
-        )
-            return;
+def moeda(valor):
 
+    try:
+        valor = float(valor)
+    except Exception:
+        valor = 0
 
-        if (
-            !mesesAtivos.has(
-                Number(item.Mes)
-            )
-        )
-            return;
-
-
-        if (
-            substanciaSelecionada !==
-            "TODAS"
-            &&
-            item["Substância"] !==
-            substanciaSelecionada
-        )
-            return;
-
-
-        const ano =
-            Number(item.Ano);
-
-
-        const anterior =
-            Number(
-                serie.get(
-                    ano
-                ) || 0
-            );
-
-
-        serie.set(
-
-            ano,
-
-            anterior +
-            Number(
-                item.CFEM_Total || 0
-            )
-
-        );
-
-    });
-
-
-    return serie;
-
-}
-
-
-function desenharSerie(
-serie
-) {
-
-    serieBarras
-    .innerHTML = "";
-
-
-    let maximo = 0;
-
-
-    serie.forEach(
-        v =>
-        maximo =
-            Math.max(
-                maximo,
-                Number(v)
-            )
-    );
-
-
-    const anoAtual =
-        Number(
-            filtroAno.value
-        );
-
-
-    anos
-    .slice()
-    .sort(
-        (a,b) => a-b
+    return (
+        f"R$ {valor:,.2f}"
+        .replace(",", "X")
+        .replace(".", ",")
+        .replace("X", ".")
     )
-    .forEach(
-    function(ano) {
-
-        const valor =
-            Number(
-                serie.get(
-                    Number(ano)
-                ) || 0
-            );
 
 
-        const largura =
-            maximo > 0
-            ?
-            valor /
-            maximo *
-            100
-            :
-            0;
+def moeda_resumida(valor):
+
+    try:
+        valor = float(valor)
+    except Exception:
+        valor = 0
+
+    if abs(valor) >= 1_000_000_000:
+        return (
+            f"R$ {valor / 1_000_000_000:.2f} bi"
+            .replace(".", ",")
+        )
+
+    if abs(valor) >= 1_000_000:
+        return (
+            f"R$ {valor / 1_000_000:.2f} mi"
+            .replace(".", ",")
+        )
+
+    if abs(valor) >= 1_000:
+        return (
+            f"R$ {valor / 1_000:.2f} mil"
+            .replace(".", ",")
+        )
+
+    return moeda(valor)
 
 
-        const linha =
-            document.createElement(
-                "div"
-            );
+def numero_br(valor, casas=2):
 
+    try:
+        valor = float(valor)
+    except Exception:
+        return "-"
 
-        linha.className =
-            "serie-linha"
-            +
-            (
-                Number(ano) ===
-                anoAtual
-                ?
-                " ativa"
-                :
-                ""
-            );
-
-
-        linha.innerHTML =
-
-            '<div class="serie-ano">'
-            +
-            ano
-            +
-            (
-                Number(ano) ===
-                Number(anoPadrao)
-                ?
-                "*"
-                :
-                ""
-            )
-            +
-            '</div>'
-
-            +
-
-            '<div class="serie-barra-fundo">'
-            +
-            '<div class="serie-barra" style="width:'
-            +
-            largura
-            +
-            '%"></div>'
-            +
-            '</div>'
-
-            +
-
-            '<div class="serie-valor">'
-            +
-            moedaCompacta(
-                valor
-            )
-            +
-            '</div>';
-
-
-        serieBarras
-        .appendChild(
-            linha
-        );
-
-    });
-
-
-    serieNota.textContent =
-
-        "Período comparado: "
-        +
-        textoPeriodo(false)
-        +
-        " em todos os anos. "
-        +
-        "* "
-        +
-        anoPadrao
-        +
-        " corresponde aos dados disponíveis "
-        +
-        "na base da ANM, atualizada em "
-        +
-        dataAtualizacaoANM
-        +
-        ".";
-
-}
-
-
-/* ==========================================================
-   PAINEL MUNICIPAL
-   ========================================================== */
-
-function atualizarPainelMunicipio() {
-
-    if (
-        !codigoMunicipioSelecionado
+    return (
+        f"{valor:,.{casas}f}"
+        .replace(",", "X")
+        .replace(".", ",")
+        .replace("X", ".")
     )
-        return;
 
 
-    painelMunicipio
-    .style.display =
-        "block";
+def inteiro_br(valor):
+
+    try:
+        return f"{int(valor):,}".replace(",", ".")
+    except Exception:
+        return "0"
 
 
-    const ano =
-        Number(
-            filtroAno.value
-        );
+def percentual_br(valor):
+
+    try:
+        return f"{float(valor):.1f}%".replace(".", ",")
+    except Exception:
+        return "0,0%"
 
 
-    const valor =
-        Number(
-            valoresConsultaAtual
-            .get(
-                String(
-                    codigoMunicipioSelecionado
-                )
-            ) || 0
-        );
+def area_br(valor):
+
+    try:
+        return f"{numero_br(valor, 2)} ha"
+    except Exception:
+        return "-"
 
 
-    let totalMG = 0;
+# ============================================================
+# 8. MESES
+# ============================================================
 
+MESES = {
+    1: "Jan",
+    2: "Fev",
+    3: "Mar",
+    4: "Abr",
+    5: "Mai",
+    6: "Jun",
+    7: "Jul",
+    8: "Ago",
+    9: "Set",
+    10: "Out",
+    11: "Nov",
+    12: "Dez",
+}
 
-    valoresConsultaAtual
-    .forEach(
-        v =>
-        totalMG +=
-            Number(v)
-    );
-
-
-    const participacao =
-        totalMG > 0
-        ?
-        valor /
-        totalMG *
-        100
-        :
-        0;
-
-
-    const posicao =
-        rankingConsultaAtual
-        .findIndex(
-            x =>
-            String(x.codigo)
-            ===
-            String(
-                codigoMunicipioSelecionado
-            )
-        );
-
-
-    municipioNome
-    .textContent =
-        nomeMunicipioSelecionado;
-
-
-    municipioValorRotulo
-    .textContent =
-
-        "CFEM — "
-        +
-        ano
-        +
-        " — "
-        +
-        textoPeriodo(true);
-
-
-    municipioValor
-    .textContent =
-        moeda(valor);
-
-
-    municipioParticipacao
-    .textContent =
-
-        participacao
-        .toLocaleString(
-            "pt-BR",
-            {
-                minimumFractionDigits:2,
-                maximumFractionDigits:2
-            }
-        )
-        +
-        "%";
-
-
-    municipioPosicao
-    .textContent =
-
-        posicao >= 0
-        ?
-        (posicao + 1)
-        +
-        "º"
-        :
-        "Sem arrecadação";
-
-
-    serieSubstancia
-    .textContent =
-
-        substanciaSelecionada ===
-        "TODAS"
-        ?
-        "Todas as substâncias"
-        :
-        substanciaSelecionada;
-
-
-    seriePeriodo
-    .textContent =
-
-        "Período comparado: "
-        +
-        textoPeriodo(false);
-
-
-    desenharSerie(
-
-        obterSerie(
-            codigoMunicipioSelecionado
-        )
-
-    );
-
+MESES_LONGOS = {
+    1: "Janeiro",
+    2: "Fevereiro",
+    3: "Março",
+    4: "Abril",
+    5: "Maio",
+    6: "Junho",
+    7: "Julho",
+    8: "Agosto",
+    9: "Setembro",
+    10: "Outubro",
+    11: "Novembro",
+    12: "Dezembro",
 }
 
 
-/* ==========================================================
-   DOWNLOAD CSV
-   ========================================================== */
+# ============================================================
+# 9. LEITURA DE CSV
+# ============================================================
 
-document
-.getElementById(
-    "botao-download-csv"
-)
-.onclick =
-function() {
+def read_csv_bytes(content):
 
-    const ano =
-        Number(
-            filtroAno.value
-        );
+    if not content:
+        raise ValueError("Arquivo vazio.")
+
+    tentativas = [
+        ("utf-8-sig", ","),
+        ("utf-8", ","),
+        ("latin1", ","),
+        ("cp1252", ","),
+        ("utf-8-sig", ";"),
+        ("utf-8", ";"),
+        ("latin1", ";"),
+        ("cp1252", ";"),
+    ]
+
+    erros = []
+
+    for encoding, separador in tentativas:
+
+        try:
+
+            df = pd.read_csv(
+                io.BytesIO(content),
+                encoding=encoding,
+                sep=separador,
+                low_memory=False,
+                on_bad_lines="skip",
+            )
+
+            if len(df.columns) > 1:
+
+                df.columns = [
+                    str(c).strip()
+                    for c in df.columns
+                ]
+
+                return df
+
+        except Exception as erro:
+            erros.append(str(erro))
+
+    raise ValueError(
+        "Não foi possível interpretar o CSV. "
+        + " | ".join(erros[:3])
+    )
 
 
-    const periodo =
-        textoPeriodo(false);
+def converter_numero(serie):
+
+    serie = serie.astype(str).str.strip()
+
+    possui_virgula = serie.str.contains(
+        ",",
+        regex=False
+    )
+
+    serie.loc[possui_virgula] = (
+        serie.loc[possui_virgula]
+        .str.replace(".", "", regex=False)
+        .str.replace(",", ".", regex=False)
+    )
+
+    return pd.to_numeric(
+        serie,
+        errors="coerce"
+    )
 
 
-    const linhas = [
+# ============================================================
+# 10. CFEM
+# ============================================================
 
-        [
-            "Ano",
-            "Meses_selecionados",
-            "CodigoMunicipio",
-            "Municipio",
-            "Substancia",
-            "CFEM_Total_R$",
-            "Atualizacao_dados_ANM"
+@st.cache_data(ttl=21600, show_spinner=False)
+def load_cfem():
+
+    r = requests.get(
+        CFEM_URL,
+        headers=HEADERS,
+        timeout=180
+    )
+
+    r.raise_for_status()
+
+    df = read_csv_bytes(r.content)
+
+    df["UF"] = (
+        df["UF"]
+        .astype(str)
+        .str.strip()
+        .str.upper()
+    )
+
+    df = df[
+        df["UF"] == "MG"
+    ].copy()
+
+    df["Ano"] = pd.to_numeric(
+        df["Ano"],
+        errors="coerce"
+    ).astype("Int64")
+
+    df["Mês"] = pd.to_numeric(
+        df["Mês"],
+        errors="coerce"
+    ).astype("Int64")
+
+    for coluna in [
+        "ValorRecolhido",
+        "QuantidadeComercializada"
+    ]:
+
+        if coluna in df.columns:
+            df[coluna] = converter_numero(
+                df[coluna]
+            )
+
+    for coluna in [
+        "Município",
+        "Substância"
+    ]:
+
+        if coluna in df.columns:
+
+            df[coluna] = (
+                df[coluna]
+                .astype(str)
+                .str.strip()
+                .str.upper()
+            )
+
+    if "AnoDoProcesso" in df.columns:
+
+        df["Processo_key"] = [
+            criar_chave_processo(p, a)
+            for p, a in zip(
+                df["Processo"],
+                df["AnoDoProcesso"]
+            )
         ]
-        .join(";")
 
-    ];
+    else:
 
-
-    municipiosBusca
-    .forEach(
-    function(m) {
-
-        const valor =
-            Number(
-                valoresConsultaAtual
-                .get(
-                    String(
-                        m.CD_MUN
-                    )
-                ) || 0
-            );
-
-
-        const substancia =
-            substanciaSelecionada ===
-            "TODAS"
-            ?
-            "Todas as substâncias"
-            :
-            substanciaSelecionada;
-
-
-        linhas.push(
-
-            [
-
-                ano,
-
-                '"' +
-                String(periodo)
-                .replace(
-                    /"/g,
-                    '""'
-                )
-                + '"',
-
-                m.CD_MUN,
-
-                '"' +
-                String(m.NM_MUN)
-                .replace(
-                    /"/g,
-                    '""'
-                )
-                + '"',
-
-                '"' +
-                String(substancia)
-                .replace(
-                    /"/g,
-                    '""'
-                )
-                + '"',
-
-                valor
-                .toFixed(2)
-                .replace(
-                    ".",
-                    ","
-                ),
-
-                dataAtualizacaoANM
-
-            ]
-            .join(";")
-
-        );
-
-    });
-
-
-    const blob =
-        new Blob(
-
-            [
-                "\uFEFF"
-                +
-                linhas.join(
-                    "\r\n"
-                )
-            ],
-
-            {
-                type:
-                    "text/csv;charset=utf-8"
-            }
-
-        );
-
-
-    const url =
-        URL.createObjectURL(
-            blob
-        );
-
-
-    const link =
-        document.createElement(
-            "a"
-        );
-
-
-    link.href = url;
-
-
-    const periodoArquivo =
-        textoPeriodo(true)
-        .replace(
-            /\s+/g,
-            "_"
+        df["Processo_key"] = (
+            df["Processo"]
+            .map(criar_chave_processo)
         )
-        .replace(
-            /\+/g,
-            "-"
-        )
-        .replace(
-            /–/g,
-            "-"
-        );
 
-
-    link.download =
-
-        "cfem_mg_"
-        +
-        ano
-        +
-        "_"
-        +
-        periodoArquivo
-        +
-        ".csv";
-
-
-    link.click();
-
-
-    URL.revokeObjectURL(
-        url
-    );
-
-};
-
-
-/* ==========================================================
-   MODAL
-   ========================================================== */
-
-document
-.getElementById(
-    "botao-sobre"
-)
-.onclick =
-function() {
-
-    modal.classList.add(
-        "aberto"
-    );
-
-};
-
-
-document
-.getElementById(
-    "fechar-modal"
-)
-.onclick =
-function() {
-
-    modal.classList.remove(
-        "aberto"
-    );
-
-};
-
-
-modal.onclick =
-function(event) {
-
-    if (
-        event.target === modal
-    ) {
-
-        modal.classList.remove(
-            "aberto"
-        );
-
-    }
-
-};
-
-
-/* ==========================================================
-   ATUALIZAR MAPA
-   ========================================================== */
-
-function atualizarMapa() {
-
-    const ano =
-        Number(
-            filtroAno.value
-        );
-
-
-    valoresConsultaAtual =
-        obterValoresConsulta(
-            ano
-        );
-
-
-    rankingConsultaAtual =
-        gerarRanking(
-            valoresConsultaAtual
-        );
-
-
-    camadaMunicipios
-    .eachLayer(
-    function(layer) {
-
-        const p =
-            layer.feature
-            .properties;
-
-
-        const codigo =
-            String(
-                p.CD_MUN
-            );
-
-
-        const valor =
-            Number(
-                valoresConsultaAtual
-                .get(
-                    codigo
-                ) || 0
-            );
-
-
-        p.CFEM_Total =
-            valor;
-
-        p.Ano =
-            ano;
-
-
-        aplicarEstiloNormal(
-            layer
-        );
-
-
-        const substancia =
-            substanciaSelecionada ===
-            "TODAS"
-            ?
-            "Todas as substâncias"
-            :
-            substanciaSelecionada;
-
-
-        const tooltip =
-
-            "<b>Município:</b> "
-            +
-            p.NM_MUN
-
-            +
-            "<br>"
-
-            +
-            "<b>Ano:</b> "
-            +
-            ano
-
-            +
-            "<br>"
-
-            +
-            "<b>Período:</b> "
-            +
-            textoPeriodo(false)
-
-            +
-            "<br>"
-
-            +
-            "<b>Substância:</b> "
-            +
-            substancia
-
-            +
-            "<br>"
-
-            +
-            "<b>CFEM:</b> "
-            +
-            moeda(valor)
-
-            +
-            "<br>"
-
-            +
-            "<span style='color:#666'>"
-            +
-            "Toque/clique para consultar"
-            +
-            "</span>";
-
-
-        if (
-            layer.getTooltip()
-        ) {
-
-            layer
-            .setTooltipContent(
-                tooltip
-            );
-
-        }
-
-        else {
-
-            layer.bindTooltip(
-
-                tooltip,
-
-                {
-                    sticky:true
-                }
-
-            );
-
-        }
-
-    });
-
-
-    atualizarIndicadores();
-
-    atualizarRanking();
-
-
-    if (
-        codigoMunicipioSelecionado
-    ) {
-
-        camadaMunicipioSelecionado =
-            layerPorCodigo.get(
-                String(
-                    codigoMunicipioSelecionado
-                )
-            );
-
-        aplicarDestaque();
-
-        atualizarPainelMunicipio();
-
-    }
-
-
-    statusAno
-    .textContent =
-        ano;
-
-
-    statusPeriodo
-    .textContent =
-        textoPeriodo(false);
-
-
-    statusSubstancia
-    .textContent =
-
-        substanciaSelecionada ===
-        "TODAS"
-        ?
-        "Todas as substâncias"
-        :
-        substanciaSelecionada;
-
-}
-
-
-/* ==========================================================
-   ALTERAÇÃO DE ANO
-   ========================================================== */
-
-filtroAno.onchange =
-function() {
-
-    atualizarMapa();
-
-};
-
-
-/* ==========================================================
-   FECHAR LISTAS
-   ========================================================== */
-
-document.addEventListener(
-"click",
-function(event) {
-
-    if (
-        event.target !==
-        buscaSubstancia
-        &&
-        !listaSubstancias
-        .contains(
-            event.target
-        )
-    ) {
-
-        listaSubstancias
-        .style.display =
-            "none";
-
-    }
-
-
-    if (
-        event.target !==
-        buscaMunicipio
-        &&
-        !listaMunicipios
-        .contains(
-            event.target
-        )
-    ) {
-
-        listaMunicipios
-        .style.display =
-            "none";
-
-    }
-
-});
-
-
-/* ==========================================================
-   RESIZE
-   ========================================================== */
-
-window.addEventListener(
-"resize",
-function() {
-
-    if (!ehMobile()) {
-
-        painel.classList.remove(
-            "aberto"
-        );
-
-        document.body
-        .classList.remove(
-            "painel-mobile-aberto"
-        );
-
-        legenda.classList.remove(
-            "aberta"
-        );
-
-        botaoLegenda
-        .textContent =
-            "Legenda";
-
-    }
-
-
-    setTimeout(
-        function() {
-
-            mapa.invalidateSize();
-
-        },
-        100
-    );
-
-});
-
-
-/* ==========================================================
-   INICIALIZAÇÃO
-   ========================================================== */
-
-atualizarResumoMeses();
-
-atualizarMapa();
-
-});
-</script>
-"""
-
-
-# ============================================================
-# 25. PLACEHOLDERS
-# ============================================================
-
-interface_html = interface_html.replace(
-    "__MAPA_JS__",
-    nome_mapa_js
-)
-
-interface_html = interface_html.replace(
-    "__CAMADA_MUNICIPIOS__",
-    nome_camada_js
-)
-
-interface_html = interface_html.replace(
-    "__ANOS_JSON__",
-    anos_json
-)
-
-interface_html = interface_html.replace(
-    "__SUBSTANCIAS_JSON__",
-    substancias_json
-)
-
-interface_html = interface_html.replace(
-    "__PRINCIPAIS_JSON__",
-    principais_json
-)
-
-interface_html = interface_html.replace(
-    "__MUNICIPIOS_JSON__",
-    municipios_json
-)
-
-interface_html = interface_html.replace(
-    "__LIMITES_MG__",
-    limites_mg_json
-)
-
-interface_html = interface_html.replace(
-    "__ANO_PADRAO__",
-    str(int(ano_padrao))
-)
-
-interface_html = interface_html.replace(
-    "__DATA_ATUALIZACAO_ANM_JSON__",
-    data_atualizacao_anm_json
-)
-
-interface_html = interface_html.replace(
-    "__DATA_ATUALIZACAO_ANM__",
-    data_atualizacao_anm
-)
-
-interface_html = interface_html.replace(
-    "__DATA_GERACAO_WEBGIS__",
-    data_geracao_webgis
-)
-
-
-# ============================================================
-# 26. INTERFACE
-# ============================================================
-
-mapa_cfem.get_root().html.add_child(
-    folium.Element(
-        interface_html
+    df["Processo_fmt"] = (
+        df["Processo_key"]
+        .map(formatar_processo)
     )
+
+    return df
+
+
+# ============================================================
+# 11. INFORMAÇÕES TEMPORAIS DA CFEM
+# ============================================================
+
+def info_periodo_cfem(df):
+
+    if df.empty:
+        return None, None, None
+
+    ano_max = int(
+        df["Ano"].dropna().max()
+    )
+
+    dados_ano = df[
+        df["Ano"] == ano_max
+    ]
+
+    meses_validos = (
+        dados_ano
+        .groupby("Mês")["ValorRecolhido"]
+        .sum()
+    )
+
+    # Consideramos publicado um mês com arrecadação > 0.
+    meses_validos = meses_validos[
+        meses_validos > 0
+    ]
+
+    if meses_validos.empty:
+        mes_max = None
+    else:
+        mes_max = int(
+            meses_validos.index.max()
+        )
+
+    ano_atual = datetime.now().year
+
+    parcial = (
+        ano_max >= ano_atual
+        and mes_max is not None
+        and mes_max < 12
+    )
+
+    return ano_max, mes_max, parcial
+
+
+# ============================================================
+# 12. SCM
+# ============================================================
+
+@st.cache_data(ttl=21600, show_spinner=False)
+def load_scm_file(filename):
+
+    r = requests.get(
+        SCM_BASE + filename,
+        headers=HEADERS,
+        timeout=180
+    )
+
+    r.raise_for_status()
+
+    df = read_csv_bytes(r.content)
+
+    colunas = list(df.columns)
+
+    coluna_processo = encontrar_coluna(
+        colunas,
+        [
+            "processo",
+            "numeroprocesso",
+            "numprocesso",
+        ]
+    )
+
+    if coluna_processo:
+
+        # Tenta achar ano separado
+        coluna_ano = encontrar_coluna(
+            colunas,
+            [
+                "anoprocesso",
+                "ano"
+            ]
+        )
+
+        if coluna_ano:
+
+            df["_processo_key"] = [
+                criar_chave_processo(p, a)
+                for p, a in zip(
+                    df[coluna_processo],
+                    df[coluna_ano]
+                )
+            ]
+
+        else:
+
+            df["_processo_key"] = (
+                df[coluna_processo]
+                .map(criar_chave_processo)
+            )
+
+    return df
+
+
+# ============================================================
+# 13. SIGMINE
+# ============================================================
+
+@st.cache_resource(ttl=21600, show_spinner=False)
+def load_sigmine():
+
+    r = requests.get(
+        SIGMINE_MG_URL,
+        headers=HEADERS,
+        timeout=300
+    )
+
+    r.raise_for_status()
+
+    if len(r.content) < 1000:
+        raise ValueError(
+            "Arquivo SIGMINE MG.zip inválido."
+        )
+
+    pasta = Path(
+        tempfile.mkdtemp()
+    )
+
+    zip_path = pasta / "MG.zip"
+
+    zip_path.write_bytes(
+        r.content
+    )
+
+    destino = pasta / "sigmine"
+
+    destino.mkdir(
+        exist_ok=True
+    )
+
+    with zipfile.ZipFile(zip_path) as z:
+        z.extractall(destino)
+
+    shapefiles = list(
+        destino.rglob("*.shp")
+    )
+
+    if not shapefiles:
+        raise FileNotFoundError(
+            "Nenhum shapefile encontrado no MG.zip."
+        )
+
+    shp = max(
+        shapefiles,
+        key=lambda p: p.stat().st_size
+    )
+
+    gdf = gpd.read_file(shp)
+
+    if gdf.crs is None:
+        raise ValueError(
+            "SIGMINE sem sistema de referência."
+        )
+
+    gdf = gdf.to_crs(4326)
+
+    colunas = list(gdf.columns)
+
+    coluna_processo = encontrar_coluna(
+        colunas,
+        [
+            "processo",
+            "numero"
+        ]
+    )
+
+    coluna_ano = encontrar_coluna(
+        colunas,
+        [
+            "ano"
+        ]
+    )
+
+    if coluna_processo:
+
+        if coluna_ano and coluna_ano != coluna_processo:
+
+            gdf["Processo_key"] = [
+                criar_chave_processo(p, a)
+                for p, a in zip(
+                    gdf[coluna_processo],
+                    gdf[coluna_ano]
+                )
+            ]
+
+        else:
+
+            gdf["Processo_key"] = (
+                gdf[coluna_processo]
+                .map(criar_chave_processo)
+            )
+
+        gdf["Processo_fmt"] = (
+            gdf["Processo_key"]
+            .map(formatar_processo)
+        )
+
+    return gdf
+
+
+# ============================================================
+# 14. IDENTIFICAR CAMPOS SIGMINE
+# ============================================================
+
+def campos_sigmine(gdf):
+
+    colunas = [
+        c for c in gdf.columns
+        if c != "geometry"
+    ]
+
+    return {
+        "municipio": encontrar_coluna(
+            colunas,
+            [
+                "municipio",
+                "município",
+                "munic"
+            ]
+        ),
+
+        "substancia": encontrar_coluna(
+            colunas,
+            [
+                "substancia",
+                "substância",
+                "subst"
+            ]
+        ),
+
+        "fase": encontrar_coluna(
+            colunas,
+            [
+                "fase"
+            ]
+        ),
+
+        "titular": encontrar_coluna(
+            colunas,
+            [
+                "titular",
+                "razaosocial",
+                "nomeempresa"
+            ]
+        ),
+
+        "area": encontrar_coluna(
+            colunas,
+            [
+                "areaha",
+                "area_ha",
+                "area"
+            ]
+        ),
+
+        "evento": encontrar_coluna(
+            colunas,
+            [
+                "ult_evento",
+                "ultevento",
+                "evento"
+            ]
+        ),
+    }
+
+
+# ============================================================
+# 15. EXPORTAÇÃO GIS
+# ============================================================
+
+def preparar_geo_exportacao(gdf):
+
+    geo = gdf.copy()
+
+    # Mantém geometria válida
+    geo = geo[
+        geo.geometry.notna()
+    ].copy()
+
+    geo = geo[
+        ~geo.geometry.is_empty
+    ].copy()
+
+    # WGS84 é prático para intercâmbio
+    if geo.crs is None:
+        geo = geo.set_crs(
+            4326,
+            allow_override=True
+        )
+    else:
+        geo = geo.to_crs(4326)
+
+    # Shapefile possui limitações com tipos complexos
+    for coluna in geo.columns:
+
+        if coluna == "geometry":
+            continue
+
+        if geo[coluna].dtype == "object":
+            geo[coluna] = (
+                geo[coluna]
+                .astype(str)
+                .replace("nan", "")
+            )
+
+    return geo
+
+
+def exportar_geojson(gdf):
+
+    geo = preparar_geo_exportacao(
+        gdf
+    )
+
+    return geo.to_json().encode(
+        "utf-8"
+    )
+
+
+def exportar_kml(gdf):
+
+    geo = preparar_geo_exportacao(
+        gdf
+    )
+
+    with tempfile.TemporaryDirectory() as pasta:
+
+        caminho = (
+            Path(pasta)
+            / "processo.kml"
+        )
+
+        try:
+
+            geo.to_file(
+                caminho,
+                driver="KML"
+            )
+
+            return caminho.read_bytes()
+
+        except Exception:
+
+            # Fallback simples para KML
+            # usando apenas geometrias
+            partes = [
+                '<?xml version="1.0" encoding="UTF-8"?>',
+                '<kml xmlns="http://www.opengis.net/kml/2.2">',
+                "<Document>",
+            ]
+
+            for idx, row in geo.iterrows():
+
+                geom = row.geometry
+
+                if geom is None:
+                    continue
+
+                nome = (
+                    str(
+                        row.get(
+                            "Processo_fmt",
+                            f"Feição {idx + 1}"
+                        )
+                    )
+                )
+
+                if geom.geom_type == "Polygon":
+
+                    coords = " ".join(
+                        f"{x},{y},0"
+                        for x, y
+                        in geom.exterior.coords
+                    )
+
+                    partes.extend([
+                        "<Placemark>",
+                        f"<name>{nome}</name>",
+                        "<Polygon>",
+                        "<outerBoundaryIs>",
+                        "<LinearRing>",
+                        f"<coordinates>{coords}</coordinates>",
+                        "</LinearRing>",
+                        "</outerBoundaryIs>",
+                        "</Polygon>",
+                        "</Placemark>",
+                    ])
+
+                elif geom.geom_type == "MultiPolygon":
+
+                    partes.append(
+                        "<Placemark>"
+                    )
+
+                    partes.append(
+                        f"<name>{nome}</name>"
+                    )
+
+                    partes.append(
+                        "<MultiGeometry>"
+                    )
+
+                    for poligono in geom.geoms:
+
+                        coords = " ".join(
+                            f"{x},{y},0"
+                            for x, y
+                            in poligono.exterior.coords
+                        )
+
+                        partes.extend([
+                            "<Polygon>",
+                            "<outerBoundaryIs>",
+                            "<LinearRing>",
+                            f"<coordinates>{coords}</coordinates>",
+                            "</LinearRing>",
+                            "</outerBoundaryIs>",
+                            "</Polygon>",
+                        ])
+
+                    partes.extend([
+                        "</MultiGeometry>",
+                        "</Placemark>",
+                    ])
+
+            partes.extend([
+                "</Document>",
+                "</kml>",
+            ])
+
+            return "\n".join(
+                partes
+            ).encode("utf-8")
+
+
+def exportar_shapefile_zip(gdf, nome_base):
+
+    geo = preparar_geo_exportacao(
+        gdf
+    )
+
+    with tempfile.TemporaryDirectory() as pasta:
+
+        pasta = Path(pasta)
+
+        shp = pasta / f"{nome_base}.shp"
+
+        # Limpa nomes de campos para maior compatibilidade
+        renomear = {}
+
+        usados = set()
+
+        for coluna in geo.columns:
+
+            if coluna == "geometry":
+                continue
+
+            novo = (
+                unicodedata.normalize(
+                    "NFKD",
+                    str(coluna)
+                )
+                .encode(
+                    "ascii",
+                    "ignore"
+                )
+                .decode()
+                .replace(" ", "_")
+            )
+
+            novo = re.sub(
+                r"[^A-Za-z0-9_]",
+                "",
+                novo
+            )
+
+            novo = novo[:10]
+
+            original_novo = novo
+
+            contador = 1
+
+            while novo.lower() in usados:
+
+                sufixo = str(contador)
+
+                novo = (
+                    original_novo[
+                        :10 - len(sufixo)
+                    ]
+                    + sufixo
+                )
+
+                contador += 1
+
+            usados.add(
+                novo.lower()
+            )
+
+            renomear[coluna] = novo
+
+        geo_shp = geo.rename(
+            columns=renomear
+        )
+
+        geo_shp.to_file(
+            shp,
+            driver="ESRI Shapefile",
+            encoding="UTF-8"
+        )
+
+        buffer = io.BytesIO()
+
+        with zipfile.ZipFile(
+            buffer,
+            "w",
+            zipfile.ZIP_DEFLATED
+        ) as z:
+
+            for arquivo in pasta.iterdir():
+
+                if arquivo.is_file():
+
+                    z.write(
+                        arquivo,
+                        arcname=arquivo.name
+                    )
+
+        buffer.seek(0)
+
+        return buffer.getvalue()
+
+
+# ============================================================
+# 16. PLOTLY
+# ============================================================
+
+def layout_grafico(
+    fig,
+    altura=None,
+    margem_esquerda=20,
+    margem_direita=45
+):
+
+    fig.update_layout(
+        paper_bgcolor="white",
+        plot_bgcolor="white",
+        font=dict(
+            family="Arial",
+            color=TEXTO,
+            size=12
+        ),
+        title=dict(
+            font=dict(
+                size=17,
+                color=TEXTO
+            ),
+            x=0.02
+        ),
+        margin=dict(
+            l=margem_esquerda,
+            r=margem_direita,
+            t=62,
+            b=30
+        ),
+        hoverlabel=dict(
+            bgcolor="white",
+            bordercolor=BORDA,
+            font_size=13,
+            font_family="Arial"
+        ),
+        legend_title_text=""
+    )
+
+    if altura:
+        fig.update_layout(
+            height=altura
+        )
+
+    fig.update_xaxes(
+        showgrid=False,
+        linecolor=BORDA,
+        zeroline=False
+    )
+
+    fig.update_yaxes(
+        gridcolor="#EDF1F4",
+        linecolor=BORDA,
+        zeroline=False
+    )
+
+    return fig
+
+
+def plotar(fig):
+
+    st.plotly_chart(
+        fig,
+        use_container_width=True,
+        config={
+            "displayModeBar": False,
+            "responsive": True,
+        }
+    )
+
+
+# ============================================================
+# 17. CARDS
+# ============================================================
+
+def mostrar_cards(df, cinco=False):
+
+    total = (
+        df["ValorRecolhido"]
+        .fillna(0)
+        .sum()
+    )
+
+    municipios = (
+        df["Município"]
+        .nunique()
+    )
+
+    processos = (
+        df["Processo_key"]
+        .nunique()
+    )
+
+    substancias = (
+        df["Substância"]
+        .nunique()
+    )
+
+    if cinco:
+
+        colunas = st.columns(
+            [1, 1, 1, 1, 1.25]
+        )
+
+    else:
+
+        colunas = st.columns(4)
+
+    colunas[0].metric(
+        "💰 CFEM arrecadada",
+        moeda_resumida(total)
+    )
+
+    colunas[0].caption(
+        "Período selecionado"
+    )
+
+    colunas[1].metric(
+        "🏙️ Municípios",
+        inteiro_br(municipios)
+    )
+
+    colunas[1].caption(
+        "Com arrecadação"
+    )
+
+    colunas[2].metric(
+        "⛏️ Processos",
+        inteiro_br(processos)
+    )
+
+    colunas[2].caption(
+        "Com recolhimento de CFEM"
+    )
+
+    colunas[3].metric(
+        "💎 Substâncias",
+        inteiro_br(substancias)
+    )
+
+    colunas[3].caption(
+        "Registradas na base"
+    )
+
+    if cinco:
+
+        ranking = (
+            df
+            .groupby(
+                "Município",
+                as_index=False
+            )
+            ["ValorRecolhido"]
+            .sum()
+            .sort_values(
+                "ValorRecolhido",
+                ascending=False
+            )
+        )
+
+        if not ranking.empty:
+
+            maior = ranking.iloc[0]
+
+            nome = str(
+                maior["Município"]
+            )
+
+            if len(nome) > 24:
+                nome = nome[:22] + "…"
+
+            colunas[4].metric(
+                "🏆 Maior arrecadador",
+                nome
+            )
+
+            colunas[4].caption(
+                moeda_resumida(
+                    maior["ValorRecolhido"]
+                )
+            )
+
+
+# ============================================================
+# 18. FILTROS CFEM
+# ============================================================
+
+def filtros_cfem(df, prefixo):
+
+    with st.expander(
+        "⚙️ Filtros",
+        expanded=True
+    ):
+
+        c1, c2, c3, c4 = st.columns(
+            [1.15, 1.4, 2.1, 2.1]
+        )
+
+        anos = sorted(
+            df["Ano"]
+            .dropna()
+            .astype(int)
+            .unique()
+        )
+
+        anos_sel = c1.multiselect(
+            "Ano",
+            anos,
+            default=anos,
+            key=f"{prefixo}_ano"
+        )
+
+        meses_disponiveis = sorted(
+            df["Mês"]
+            .dropna()
+            .astype(int)
+            .unique()
+        )
+
+        nomes_meses = [
+            MESES[m]
+            for m in meses_disponiveis
+        ]
+
+        meses_sel_nome = c2.multiselect(
+            "Mês",
+            nomes_meses,
+            default=nomes_meses,
+            key=f"{prefixo}_mes"
+        )
+
+        meses_sel = [
+            numero
+            for numero, nome
+            in MESES.items()
+            if nome in meses_sel_nome
+        ]
+
+        municipios = sorted(
+            df["Município"]
+            .dropna()
+            .unique()
+        )
+
+        mun_sel = c3.multiselect(
+            "Município",
+            municipios,
+            placeholder="Todos os municípios",
+            key=f"{prefixo}_mun"
+        )
+
+        substancias = sorted(
+            df["Substância"]
+            .dropna()
+            .unique()
+        )
+
+        subst_sel = c4.multiselect(
+            "Substância",
+            substancias,
+            placeholder="Todas as substâncias",
+            key=f"{prefixo}_subst"
+        )
+
+    dados = df.copy()
+
+    if anos_sel:
+        dados = dados[
+            dados["Ano"].isin(
+                anos_sel
+            )
+        ]
+
+    if meses_sel:
+        dados = dados[
+            dados["Mês"].isin(
+                meses_sel
+            )
+        ]
+
+    if mun_sel:
+        dados = dados[
+            dados["Município"].isin(
+                mun_sel
+            )
+        ]
+
+    if subst_sel:
+        dados = dados[
+            dados["Substância"].isin(
+                subst_sel
+            )
+        ]
+
+    return dados
+
+
+# ============================================================
+# 19. MAPA BASE
+# ============================================================
+
+def criar_mapa_base(
+    centro=(-18.6, -44.2),
+    zoom=6
+):
+
+    mapa = folium.Map(
+        location=centro,
+        zoom_start=zoom,
+        tiles=None,
+        control_scale=True,
+        prefer_canvas=True
+    )
+
+    folium.TileLayer(
+        tiles=(
+            "https://server.arcgisonline.com/"
+            "ArcGIS/rest/services/"
+            "World_Imagery/MapServer/tile/"
+            "{z}/{y}/{x}"
+        ),
+        attr=(
+            "Esri, Maxar, Earthstar Geographics, "
+            "and the GIS User Community"
+        ),
+        name="Satélite — Esri",
+        overlay=False,
+        control=True,
+        show=True,
+        max_zoom=19
+    ).add_to(mapa)
+
+    folium.TileLayer(
+        tiles="OpenStreetMap",
+        name="OpenStreetMap",
+        overlay=False,
+        control=True,
+        show=False
+    ).add_to(mapa)
+
+    return mapa
+
+
+# ============================================================
+# 20. CARREGAMENTO INICIAL
+# ============================================================
+
+try:
+
+    with st.spinner(
+        "Carregando dados oficiais da ANM..."
+    ):
+
+        cfem = load_cfem()
+
+except Exception as erro:
+
+    st.error(
+        "Não foi possível carregar a base CFEM da ANM."
+    )
+
+    st.exception(erro)
+
+    st.stop()
+
+
+ANO_MAX_CFEM, MES_MAX_CFEM, ANO_PARCIAL = (
+    info_periodo_cfem(cfem)
 )
 
 
 # ============================================================
-# 27. LAYER CONTROL
+# 21. SIDEBAR
 # ============================================================
 
-folium.LayerControl(
-    collapsed=True
-).add_to(
-    mapa_cfem
+st.sidebar.title(
+    "⛏️ Mineração MG"
 )
+
+st.sidebar.caption(
+    "Inteligência mineral e territorial"
+)
+
+st.sidebar.divider()
+
+pagina = st.sidebar.radio(
+    "Navegação",
+    [
+        "📊 Visão Geral",
+        "💰 CFEM",
+        "🗺️ Mapa Minerário",
+        "🏙️ Municípios",
+        "🔎 Processos",
+    ]
+)
+
+st.sidebar.divider()
+
+st.sidebar.caption(
+    "FONTES OFICIAIS"
+)
+
+st.sidebar.write(
+    "ANM • CFEM • SIGMINE • SCM"
+)
+
+if (
+    ANO_MAX_CFEM
+    and MES_MAX_CFEM
+):
+
+    st.sidebar.caption(
+        f"CFEM disponível até "
+        f"{MESES_LONGOS[MES_MAX_CFEM]}/"
+        f"{ANO_MAX_CFEM}"
+    )
+
+st.sidebar.caption(
+    "Cache das bases: 6 horas"
+)
+
+if st.sidebar.button(
+    "🔄 Recarregar bases ANM",
+    use_container_width=True
+):
+
+    st.cache_data.clear()
+    st.cache_resource.clear()
+    st.rerun()
 
 
 # ============================================================
-# 28. ENQUADRAR MG
+# 22. CABEÇALHO
 # ============================================================
 
-mapa_cfem.fit_bounds(
-    limites_mg
+st.title(
+    "⛏️ Painel da Mineração | Minas Gerais"
 )
+
+st.caption(
+    "CFEM • Processos minerários • "
+    "Inteligência territorial • "
+    "Fontes oficiais da Agência Nacional de Mineração"
+)
+
+if (
+    ANO_PARCIAL
+    and ANO_MAX_CFEM
+    and MES_MAX_CFEM
+):
+
+    st.info(
+        f"📅 Os dados de {ANO_MAX_CFEM} são parciais. "
+        f"A base possui arrecadação registrada até "
+        f"{MESES_LONGOS[MES_MAX_CFEM]} de {ANO_MAX_CFEM}."
+    )
+
+st.divider()
 
 
 # ============================================================
-# 29. SALVAR
+# 23. VISÃO GERAL
 # ============================================================
 
-print("\nSalvando WebGIS...")
+if pagina == "📊 Visão Geral":
 
-mapa_cfem.save(
-    ARQUIVO_SAIDA
-)
+    st.header(
+        "Visão Geral"
+    )
+
+    st.caption(
+        "Panorama da arrecadação da CFEM "
+        "e da atividade mineral em Minas Gerais."
+    )
+
+    dados = filtros_cfem(
+        cfem,
+        "geral"
+    )
+
+    mostrar_cards(
+        dados,
+        cinco=True
+    )
+
+    st.write("")
+
+    # --------------------------------------------------------
+    # EVOLUÇÃO ANUAL
+    # --------------------------------------------------------
+
+    esquerda, direita = st.columns(
+        [1.05, 1]
+    )
+
+    anual = (
+        dados
+        .groupby(
+            "Ano",
+            as_index=False
+        )
+        ["ValorRecolhido"]
+        .sum()
+        .sort_values("Ano")
+    )
+
+    anual["AnoLabel"] = (
+        anual["Ano"]
+        .astype(int)
+        .astype(str)
+    )
+
+    if (
+        ANO_PARCIAL
+        and ANO_MAX_CFEM in anual["Ano"].values
+    ):
+
+        anual.loc[
+            anual["Ano"] == ANO_MAX_CFEM,
+            "AnoLabel"
+        ] = (
+            str(ANO_MAX_CFEM)
+            + "*"
+        )
+
+    anual["Rotulo"] = (
+        anual["ValorRecolhido"]
+        .map(moeda_resumida)
+    )
+
+    anual["Hover"] = (
+        anual["ValorRecolhido"]
+        .map(moeda)
+    )
+
+    fig_anual = px.bar(
+        anual,
+        x="AnoLabel",
+        y="ValorRecolhido",
+        text="Rotulo",
+        custom_data=["Hover"],
+        title="Evolução anual da CFEM"
+    )
+
+    fig_anual.update_traces(
+        marker_color=AZUL_MEDIO,
+        textposition="outside",
+        cliponaxis=False,
+        hovertemplate=(
+            "<b>Ano %{x}</b><br>"
+            "CFEM arrecadada: %{customdata[0]}"
+            "<extra></extra>"
+        )
+    )
+
+    fig_anual.update_xaxes(
+        title=None
+    )
+
+    fig_anual.update_yaxes(
+        title=None,
+        tickformat=".2s"
+    )
+
+    layout_grafico(
+        fig_anual,
+        altura=440
+    )
+
+    esquerda.plotly_chart(
+        fig_anual,
+        use_container_width=True,
+        config={"displayModeBar": False}
+    )
+
+    # --------------------------------------------------------
+    # TOP MUNICÍPIOS
+    # --------------------------------------------------------
+
+    ranking_mun = (
+        dados
+        .groupby(
+            "Município",
+            as_index=False
+        )
+        ["ValorRecolhido"]
+        .sum()
+        .nlargest(
+            10,
+            "ValorRecolhido"
+        )
+        .sort_values(
+            "ValorRecolhido"
+        )
+    )
+
+    ranking_mun["Rotulo"] = (
+        ranking_mun["ValorRecolhido"]
+        .map(moeda_resumida)
+    )
+
+    ranking_mun["Hover"] = (
+        ranking_mun["ValorRecolhido"]
+        .map(moeda)
+    )
+
+    fig_mun = px.bar(
+        ranking_mun,
+        x="ValorRecolhido",
+        y="Município",
+        orientation="h",
+        text="Rotulo",
+        custom_data=["Hover"],
+        title="10 maiores municípios arrecadadores"
+    )
+
+    fig_mun.update_traces(
+        marker_color=AZUL,
+        textposition="outside",
+        cliponaxis=False,
+        hovertemplate=(
+            "<b>%{y}</b><br>"
+            "CFEM arrecadada: %{customdata[0]}"
+            "<extra></extra>"
+        )
+    )
+
+    fig_mun.update_xaxes(
+        title=None,
+        showticklabels=False,
+        range=[
+            0,
+            ranking_mun["ValorRecolhido"].max()
+            * 1.28
+        ]
+    )
+
+    fig_mun.update_yaxes(
+        title=None
+    )
+
+    layout_grafico(
+        fig_mun,
+        altura=440,
+        margem_esquerda=25,
+        margem_direita=60
+    )
+
+    direita.plotly_chart(
+        fig_mun,
+        use_container_width=True,
+        config={"displayModeBar": False}
+    )
+
+    # --------------------------------------------------------
+    # SUBSTÂNCIAS
+    # --------------------------------------------------------
+
+    st.subheader(
+        "Principais substâncias minerais"
+    )
+
+    total_cfem = (
+        dados["ValorRecolhido"]
+        .fillna(0)
+        .sum()
+    )
+
+    substancias = (
+        dados
+        .groupby(
+            "Substância",
+            as_index=False
+        )
+        ["ValorRecolhido"]
+        .sum()
+        .nlargest(
+            10,
+            "ValorRecolhido"
+        )
+        .sort_values(
+            "ValorRecolhido"
+        )
+    )
+
+    if total_cfem > 0:
+
+        substancias["Participacao"] = (
+            substancias["ValorRecolhido"]
+            / total_cfem
+            * 100
+        )
+
+    else:
+        substancias["Participacao"] = 0
+
+    substancias["Rotulo"] = (
+        substancias["ValorRecolhido"]
+        .map(moeda_resumida)
+        + "  •  "
+        + substancias["Participacao"]
+        .map(percentual_br)
+    )
+
+    substancias["Hover"] = (
+        substancias["ValorRecolhido"]
+        .map(moeda)
+    )
+
+    fig_sub = px.bar(
+        substancias,
+        x="ValorRecolhido",
+        y="Substância",
+        orientation="h",
+        text="Rotulo",
+        custom_data=[
+            "Hover",
+            "Participacao"
+        ]
+    )
+
+    fig_sub.update_traces(
+        marker_color=VERDE,
+        textposition="outside",
+        cliponaxis=False,
+        hovertemplate=(
+            "<b>%{y}</b><br>"
+            "CFEM: %{customdata[0]}<br>"
+            "Participação: %{customdata[1]:.1f}%"
+            "<extra></extra>"
+        )
+    )
+
+    maior_sub = (
+        substancias["ValorRecolhido"].max()
+        if not substancias.empty
+        else 1
+    )
+
+    fig_sub.update_xaxes(
+        title=None,
+        showticklabels=False,
+        range=[
+            0,
+            maior_sub * 1.28
+        ]
+    )
+
+    fig_sub.update_yaxes(
+        title=None
+    )
+
+    layout_grafico(
+        fig_sub,
+        altura=500,
+        margem_esquerda=25,
+        margem_direita=80
+    )
+
+    plotar(fig_sub)
+
+    if ANO_PARCIAL:
+
+        st.caption(
+            f"* {ANO_MAX_CFEM}: dados parciais até "
+            f"{MESES_LONGOS[MES_MAX_CFEM]}."
+        )
 
 
 # ============================================================
-# 30. FINAL
+# 24. CFEM
 # ============================================================
 
-print("\n" + "=" * 70)
+elif pagina == "💰 CFEM":
 
-print(
-    "WEBGIS ATUALIZADO COM SUCESSO"
+    st.header(
+        "CFEM"
+    )
+
+    st.caption(
+        "Consulta e análise da Compensação Financeira "
+        "pela Exploração Mineral em Minas Gerais."
+    )
+
+    dados = filtros_cfem(
+        cfem,
+        "cfem"
+    )
+
+    processo = st.text_input(
+        "Processo minerário",
+        placeholder="Ex.: 832.776/2009"
+    )
+
+    if processo:
+
+        chave = criar_chave_processo(
+            processo
+        )
+
+        dados = dados[
+            dados["Processo_key"] == chave
+        ]
+
+    mostrar_cards(dados)
+
+    st.write("")
+
+    modo = st.radio(
+        "Visualização temporal",
+        [
+            "Mensal",
+            "Anual",
+            "Acumulado"
+        ],
+        horizontal=True
+    )
+
+    # --------------------------------------------------------
+    # ANUAL
+    # --------------------------------------------------------
+
+    if modo == "Anual":
+
+        temporal = (
+            dados
+            .groupby(
+                "Ano",
+                as_index=False
+            )
+            ["ValorRecolhido"]
+            .sum()
+            .sort_values("Ano")
+        )
+
+        temporal["AnoLabel"] = (
+            temporal["Ano"]
+            .astype(int)
+            .astype(str)
+        )
+
+        if ANO_PARCIAL:
+
+            temporal.loc[
+                temporal["Ano"] == ANO_MAX_CFEM,
+                "AnoLabel"
+            ] = (
+                str(ANO_MAX_CFEM)
+                + "*"
+            )
+
+        temporal["Hover"] = (
+            temporal["ValorRecolhido"]
+            .map(moeda)
+        )
+
+        fig = px.line(
+            temporal,
+            x="AnoLabel",
+            y="ValorRecolhido",
+            markers=True,
+            custom_data=["Hover"],
+            title="Evolução anual da CFEM"
+        )
+
+        fig.update_traces(
+            line_color=AZUL,
+            marker_color=AZUL_MEDIO,
+            hovertemplate=(
+                "<b>%{x}</b><br>"
+                "CFEM arrecadada: %{customdata[0]}"
+                "<extra></extra>"
+            )
+        )
+
+        fig.update_xaxes(
+            title=None
+        )
+
+    # --------------------------------------------------------
+    # MENSAL / ACUMULADO
+    # --------------------------------------------------------
+
+    else:
+
+        temporal = (
+            dados
+            .groupby(
+                ["Ano", "Mês"],
+                as_index=False
+            )
+            ["ValorRecolhido"]
+            .sum()
+            .dropna()
+        )
+
+        # Remove meses sem arrecadação.
+        # Assim meses ainda não publicados não aparecem como zero.
+        temporal = temporal[
+            temporal["ValorRecolhido"] > 0
+        ].copy()
+
+        if not temporal.empty:
+
+            temporal["Data"] = pd.to_datetime(
+                dict(
+                    year=temporal["Ano"].astype(int),
+                    month=temporal["Mês"].astype(int),
+                    day=1
+                )
+            )
+
+            temporal = temporal.sort_values(
+                "Data"
+            )
+
+            if modo == "Acumulado":
+
+                temporal["ValorGrafico"] = (
+                    temporal["ValorRecolhido"]
+                    .cumsum()
+                )
+
+            else:
+
+                temporal["ValorGrafico"] = (
+                    temporal["ValorRecolhido"]
+                )
+
+            temporal["Hover"] = (
+                temporal["ValorGrafico"]
+                .map(moeda)
+            )
+
+            temporal["MesAno"] = (
+                temporal["Mês"]
+                .map(MESES_LONGOS)
+                + "/"
+                + temporal["Ano"]
+                .astype(int)
+                .astype(str)
+            )
+
+            fig = px.line(
+                temporal,
+                x="Data",
+                y="ValorGrafico",
+                markers=True,
+                custom_data=[
+                    "Hover",
+                    "MesAno"
+                ],
+                title=(
+                    "Evolução "
+                    + modo.lower()
+                    + " da CFEM"
+                )
+            )
+
+            fig.update_traces(
+                line_color=AZUL,
+                marker_color=AZUL_MEDIO,
+                hovertemplate=(
+                    "<b>%{customdata[1]}</b><br>"
+                    "CFEM arrecadada: %{customdata[0]}"
+                    "<extra></extra>"
+                )
+            )
+
+            fig.update_xaxes(
+                title=None
+            )
+
+        else:
+
+            fig = px.line(
+                title="Sem dados para o filtro selecionado"
+            )
+
+    fig.update_yaxes(
+        title=None,
+        tickformat=".2s"
+    )
+
+    layout_grafico(
+        fig,
+        altura=470
+    )
+
+    plotar(fig)
+
+    # --------------------------------------------------------
+    # COMPARAÇÃO MENSAL
+    # --------------------------------------------------------
+
+    comparacao = (
+        dados
+        .groupby(
+            ["Mês", "Ano"],
+            as_index=False
+        )
+        ["ValorRecolhido"]
+        .sum()
+    )
+
+    comparacao = comparacao[
+        comparacao["ValorRecolhido"] > 0
+    ].copy()
+
+    if not comparacao.empty:
+
+        comparacao["Ano"] = (
+            comparacao["Ano"]
+            .astype(int)
+            .astype(str)
+        )
+
+        comparacao["MesNome"] = (
+            comparacao["Mês"]
+            .map(MESES)
+        )
+
+        comparacao["Hover"] = (
+            comparacao["ValorRecolhido"]
+            .map(moeda)
+        )
+
+        fig_comp = px.line(
+            comparacao,
+            x="Mês",
+            y="ValorRecolhido",
+            color="Ano",
+            markers=True,
+            custom_data=[
+                "Hover",
+                "MesNome"
+            ],
+            title="Comparação mensal entre anos"
+        )
+
+        fig_comp.update_traces(
+            hovertemplate=(
+                "<b>%{customdata[1]}</b><br>"
+                "CFEM: %{customdata[0]}"
+                "<extra></extra>"
+            )
+        )
+
+        fig_comp.update_xaxes(
+            title=None,
+            tickmode="array",
+            tickvals=list(
+                MESES.keys()
+            ),
+            ticktext=list(
+                MESES.values()
+            )
+        )
+
+        fig_comp.update_yaxes(
+            title=None,
+            tickformat=".2s"
+        )
+
+        layout_grafico(
+            fig_comp,
+            altura=470
+        )
+
+        plotar(fig_comp)
+
+    # --------------------------------------------------------
+    # MUNICÍPIO X ANO
+    # --------------------------------------------------------
+
+    st.subheader(
+        "Arrecadação por município e ano"
+    )
+
+    pivot = dados.pivot_table(
+        index="Município",
+        columns="Ano",
+        values="ValorRecolhido",
+        aggfunc="sum",
+        fill_value=0
+    )
+
+    pivot["Total"] = (
+        pivot.sum(axis=1)
+    )
+
+    pivot = (
+        pivot
+        .sort_values(
+            "Total",
+            ascending=False
+        )
+        .reset_index()
+    )
+
+    pivot_formatada = (
+        pivot.copy()
+    )
+
+    for coluna in pivot_formatada.columns:
+
+        if coluna != "Município":
+
+            pivot_formatada[coluna] = (
+                pivot_formatada[coluna]
+                .map(moeda)
+            )
+
+    st.dataframe(
+        pivot_formatada,
+        use_container_width=True,
+        hide_index=True,
+        height=400
+    )
+
+    # --------------------------------------------------------
+    # DETALHAMENTO
+    # --------------------------------------------------------
+
+    st.subheader(
+        "Dados detalhados"
+    )
+
+    colunas = [
+        c for c in [
+            "Ano",
+            "Mês",
+            "Processo_fmt",
+            "Município",
+            "Substância",
+            "QuantidadeComercializada",
+            "UnidadeDeMedida",
+            "ValorRecolhido"
+        ]
+        if c in dados.columns
+    ]
+
+    detalhes = (
+        dados[colunas]
+        .copy()
+    )
+
+    detalhes = detalhes.rename(
+        columns={
+            "Processo_fmt": "Processo",
+            "QuantidadeComercializada":
+                "Quantidade comercializada",
+            "UnidadeDeMedida": "Unidade",
+            "ValorRecolhido":
+                "CFEM arrecadada",
+        }
+    )
+
+    if "Mês" in detalhes.columns:
+
+        detalhes["Mês"] = (
+            detalhes["Mês"]
+            .map(MESES)
+        )
+
+    if (
+        "Quantidade comercializada"
+        in detalhes.columns
+    ):
+
+        detalhes[
+            "Quantidade comercializada"
+        ] = (
+            detalhes[
+                "Quantidade comercializada"
+            ]
+            .map(
+                lambda x: numero_br(
+                    x,
+                    2
+                )
+            )
+        )
+
+    if "CFEM arrecadada" in detalhes.columns:
+
+        detalhes["CFEM arrecadada"] = (
+            detalhes["CFEM arrecadada"]
+            .map(moeda)
+        )
+
+    st.dataframe(
+        detalhes,
+        use_container_width=True,
+        hide_index=True,
+        height=450
+    )
+
+    csv = (
+        dados.to_csv(
+            index=False,
+            sep=";",
+            decimal=","
+        )
+        .encode("utf-8-sig")
+    )
+
+    st.download_button(
+        "⬇️ Baixar consulta em CSV",
+        csv,
+        "consulta_cfem_mg.csv",
+        "text/csv"
+    )
+
+
+# ============================================================
+# 25. MAPA MINERÁRIO
+# ============================================================
+
+elif pagina == "🗺️ Mapa Minerário":
+
+    st.header(
+        "Mapa Minerário"
+    )
+
+    st.caption(
+        "Consulta espacial dos processos minerários "
+        "de Minas Gerais a partir do SIGMINE/ANM."
+    )
+
+    try:
+
+        with st.spinner(
+            "Carregando poligonais do SIGMINE..."
+        ):
+
+            sigmine = load_sigmine()
+
+        campos = campos_sigmine(
+            sigmine
+        )
+
+        mapa_dados = sigmine.copy()
+
+        # ----------------------------------------------------
+        # FILTROS
+        # ----------------------------------------------------
+
+        with st.expander(
+            "⚙️ Filtros do mapa",
+            expanded=True
+        ):
+
+            f1, f2, f3 = st.columns(3)
+
+            f4, f5 = st.columns(
+                [2, 1]
+            )
+
+            # Município
+            if campos["municipio"]:
+
+                opcoes = sorted(
+                    mapa_dados[
+                        campos["municipio"]
+                    ]
+                    .dropna()
+                    .astype(str)
+                    .unique()
+                )
+
+                municipio = f1.selectbox(
+                    "Município",
+                    ["Todos"] + opcoes
+                )
+
+                if municipio != "Todos":
+
+                    mapa_dados = mapa_dados[
+                        mapa_dados[
+                            campos["municipio"]
+                        ].astype(str)
+                        == municipio
+                    ]
+
+            else:
+
+                f1.caption(
+                    "Município não disponível "
+                    "diretamente no shapefile."
+                )
+
+            # Substância
+            if campos["substancia"]:
+
+                opcoes = sorted(
+                    mapa_dados[
+                        campos["substancia"]
+                    ]
+                    .dropna()
+                    .astype(str)
+                    .unique()
+                )
+
+                substancia = f2.selectbox(
+                    "Substância",
+                    ["Todas"] + opcoes
+                )
+
+                if substancia != "Todas":
+
+                    mapa_dados = mapa_dados[
+                        mapa_dados[
+                            campos["substancia"]
+                        ].astype(str)
+                        == substancia
+                    ]
+
+            else:
+
+                f2.caption(
+                    "Substância não disponível "
+                    "diretamente no shapefile."
+                )
+
+            # Fase
+            if campos["fase"]:
+
+                opcoes = sorted(
+                    mapa_dados[
+                        campos["fase"]
+                    ]
+                    .dropna()
+                    .astype(str)
+                    .unique()
+                )
+
+                fase = f3.selectbox(
+                    "Fase processual",
+                    ["Todas"] + opcoes
+                )
+
+                if fase != "Todas":
+
+                    mapa_dados = mapa_dados[
+                        mapa_dados[
+                            campos["fase"]
+                        ].astype(str)
+                        == fase
+                    ]
+
+            # Titular
+            if campos["titular"]:
+
+                titulares = sorted(
+                    mapa_dados[
+                        campos["titular"]
+                    ]
+                    .dropna()
+                    .astype(str)
+                    .unique()
+                )
+
+                titular = f4.selectbox(
+                    "Titular",
+                    ["Todos"] + titulares
+                )
+
+                if titular != "Todos":
+
+                    mapa_dados = mapa_dados[
+                        mapa_dados[
+                            campos["titular"]
+                        ].astype(str)
+                        == titular
+                    ]
+
+            else:
+
+                f4.caption(
+                    "Titular não disponível "
+                    "diretamente no shapefile."
+                )
+
+            processo_mapa = (
+                f5.text_input(
+                    "Processo",
+                    placeholder="830.195/2006"
+                )
+            )
+
+            if processo_mapa:
+
+                chave_mapa = (
+                    criar_chave_processo(
+                        processo_mapa
+                    )
+                )
+
+                mapa_dados = mapa_dados[
+                    mapa_dados[
+                        "Processo_key"
+                    ] == chave_mapa
+                ]
+
+        somente_cfem = st.checkbox(
+            "Mostrar somente processos encontrados na CFEM"
+        )
+
+        if somente_cfem:
+
+            processos_cfem = set(
+                cfem["Processo_key"]
+            )
+
+            mapa_dados = mapa_dados[
+                mapa_dados[
+                    "Processo_key"
+                ].isin(
+                    processos_cfem
+                )
+            ]
+
+        # ----------------------------------------------------
+        # KPIs MAPA
+        # ----------------------------------------------------
+
+        mc1, mc2, mc3, mc4 = (
+            st.columns(4)
+        )
+
+        mc1.metric(
+            "⛏️ Processos",
+            inteiro_br(
+                mapa_dados[
+                    "Processo_key"
+                ].nunique()
+            )
+        )
+
+        if campos["titular"]:
+
+            mc2.metric(
+                "🏢 Titulares",
+                inteiro_br(
+                    mapa_dados[
+                        campos["titular"]
+                    ].nunique()
+                )
+            )
+
+        else:
+            mc2.metric(
+                "🏢 Titulares",
+                "-"
+            )
+
+        if campos["substancia"]:
+
+            mc3.metric(
+                "💎 Substâncias",
+                inteiro_br(
+                    mapa_dados[
+                        campos["substancia"]
+                    ].nunique()
+                )
+            )
+
+        else:
+            mc3.metric(
+                "💎 Substâncias",
+                "-"
+            )
+
+        if campos["area"]:
+
+            areas = pd.to_numeric(
+                mapa_dados[
+                    campos["area"]
+                ],
+                errors="coerce"
+            )
+
+            mc4.metric(
+                "📐 Área das feições",
+                (
+                    numero_br(
+                        areas.sum(),
+                        2
+                    )
+                    + " ha"
+                )
+            )
+
+        else:
+            mc4.metric(
+                "📐 Área",
+                "-"
+            )
+
+        # ----------------------------------------------------
+        # PERFORMANCE
+        # ----------------------------------------------------
+
+        if len(mapa_dados) > 12000:
+
+            st.info(
+                "O resultado possui mais de 12.000 feições. "
+                "O mapa exibe uma amostra para manter a "
+                "navegação responsiva. Use os filtros para "
+                "visualizar todas as feições de uma área "
+                "ou processo específico."
+            )
+
+            mapa_exibicao = (
+                mapa_dados.sample(
+                    12000,
+                    random_state=42
+                )
+                .copy()
+            )
+
+        else:
+
+            mapa_exibicao = (
+                mapa_dados.copy()
+            )
+
+        if mapa_exibicao.empty:
+
+            st.warning(
+                "Nenhum processo encontrado "
+                "para os filtros selecionados."
+            )
+
+        else:
+
+            # ------------------------------------------------
+            # CENTRO
+            # ------------------------------------------------
+
+            if len(mapa_exibicao) <= 200:
+
+                bounds = (
+                    mapa_exibicao
+                    .total_bounds
+                )
+
+                centro = (
+                    (
+                        bounds[1]
+                        + bounds[3]
+                    ) / 2,
+                    (
+                        bounds[0]
+                        + bounds[2]
+                    ) / 2
+                )
+
+                zoom = 9
+
+            else:
+
+                centro = (
+                    -18.6,
+                    -44.2
+                )
+
+                zoom = 6
+
+            mapa = criar_mapa_base(
+                centro,
+                zoom
+            )
+
+            # ------------------------------------------------
+            # TOOLTIP
+            # ------------------------------------------------
+
+            tooltip_campos = []
+            tooltip_aliases = []
+
+            if "Processo_fmt" in mapa_exibicao:
+
+                tooltip_campos.append(
+                    "Processo_fmt"
+                )
+
+                tooltip_aliases.append(
+                    "Processo:"
+                )
+
+            for chave_campo, titulo in [
+                ("fase", "Fase:"),
+                ("substancia", "Substância:"),
+                ("titular", "Titular:"),
+                ("municipio", "Município:"),
+                ("area", "Área (ha):"),
+            ]:
+
+                coluna = campos.get(
+                    chave_campo
+                )
+
+                if (
+                    coluna
+                    and coluna
+                    in mapa_exibicao.columns
+                ):
+
+                    tooltip_campos.append(
+                        coluna
+                    )
+
+                    tooltip_aliases.append(
+                        titulo
+                    )
+
+            tooltip = None
+
+            if tooltip_campos:
+
+                tooltip = folium.GeoJsonTooltip(
+                    fields=tooltip_campos,
+                    aliases=tooltip_aliases,
+                    sticky=True,
+                    labels=True
+                )
+
+            folium.GeoJson(
+                mapa_exibicao.to_json(),
+                name="Processos minerários",
+                style_function=lambda feature: {
+                    "color": AZUL,
+                    "weight": 1.1,
+                    "fillColor": AZUL_MEDIO,
+                    "fillOpacity": 0.20,
+                },
+                highlight_function=lambda feature: {
+                    "color": DOURADO,
+                    "weight": 3,
+                    "fillColor": DOURADO,
+                    "fillOpacity": 0.35,
+                },
+                tooltip=tooltip
+            ).add_to(mapa)
+
+            folium.LayerControl(
+                collapsed=False
+            ).add_to(mapa)
+
+            Fullscreen(
+                position="topright",
+                title="Tela cheia",
+                title_cancel="Sair da tela cheia"
+            ).add_to(mapa)
+
+            st_folium(
+                mapa,
+                use_container_width=True,
+                height=700
+            )
+
+            # ------------------------------------------------
+            # DOWNLOAD QUANDO HOUVER PROCESSO
+            # ------------------------------------------------
+
+            if processo_mapa:
+
+                geo_processo = (
+                    mapa_dados.copy()
+                )
+
+                if not geo_processo.empty:
+
+                    st.subheader(
+                        "📦 Exportar polígono do processo"
+                    )
+
+                    st.caption(
+                        "Arquivos preparados em WGS 84 "
+                        "(EPSG:4326), compatíveis com QGIS."
+                    )
+
+                    nome_limpo = (
+                        "processo_"
+                        + chave_mapa[:-4]
+                        + "_"
+                        + chave_mapa[-4:]
+                    )
+
+                    d1, d2, d3 = (
+                        st.columns(3)
+                    )
+
+                    try:
+
+                        shp_zip = (
+                            exportar_shapefile_zip(
+                                geo_processo,
+                                nome_limpo
+                            )
+                        )
+
+                        d1.download_button(
+                            "📦 Shapefile ZIP",
+                            data=shp_zip,
+                            file_name=(
+                                nome_limpo
+                                + ".zip"
+                            ),
+                            mime="application/zip",
+                            use_container_width=True
+                        )
+
+                    except Exception as erro:
+
+                        d1.warning(
+                            "Não foi possível "
+                            "gerar o Shapefile."
+                        )
+
+                    try:
+
+                        geojson = (
+                            exportar_geojson(
+                                geo_processo
+                            )
+                        )
+
+                        d2.download_button(
+                            "🌐 GeoJSON",
+                            data=geojson,
+                            file_name=(
+                                nome_limpo
+                                + ".geojson"
+                            ),
+                            mime="application/geo+json",
+                            use_container_width=True
+                        )
+
+                    except Exception:
+
+                        d2.warning(
+                            "Não foi possível "
+                            "gerar o GeoJSON."
+                        )
+
+                    try:
+
+                        kml = exportar_kml(
+                            geo_processo
+                        )
+
+                        d3.download_button(
+                            "🌍 KML",
+                            data=kml,
+                            file_name=(
+                                nome_limpo
+                                + ".kml"
+                            ),
+                            mime=(
+                                "application/vnd."
+                                "google-earth.kml+xml"
+                            ),
+                            use_container_width=True
+                        )
+
+                    except Exception:
+
+                        d3.warning(
+                            "Não foi possível "
+                            "gerar o KML."
+                        )
+
+    except Exception as erro:
+
+        st.error(
+            "Não foi possível carregar o SIGMINE."
+        )
+
+        st.exception(erro)
+
+
+# ============================================================
+# 26. MUNICÍPIOS
+# ============================================================
+
+elif pagina == "🏙️ Municípios":
+
+    st.header(
+        "Perfil Mineral Municipal"
+    )
+
+    st.caption(
+        "Indicadores de CFEM e perfil da atividade "
+        "mineral por município."
+    )
+
+    municipios = sorted(
+        cfem["Município"]
+        .dropna()
+        .unique()
+    )
+
+    municipio = st.selectbox(
+        "Município",
+        municipios
+    )
+
+    dados = cfem[
+        cfem["Município"] == municipio
+    ].copy()
+
+    st.subheader(
+        municipio
+    )
+
+    mostrar_cards(
+        dados
+    )
+
+    st.write("")
+
+    c1, c2 = st.columns(2)
+
+    # --------------------------------------------------------
+    # ANUAL
+    # --------------------------------------------------------
+
+    anual = (
+        dados
+        .groupby(
+            "Ano",
+            as_index=False
+        )
+        ["ValorRecolhido"]
+        .sum()
+        .sort_values("Ano")
+    )
+
+    anual["AnoLabel"] = (
+        anual["Ano"]
+        .astype(int)
+        .astype(str)
+    )
+
+    if ANO_PARCIAL:
+
+        anual.loc[
+            anual["Ano"] == ANO_MAX_CFEM,
+            "AnoLabel"
+        ] = (
+            str(ANO_MAX_CFEM)
+            + "*"
+        )
+
+    anual["Rotulo"] = (
+        anual["ValorRecolhido"]
+        .map(moeda_resumida)
+    )
+
+    anual["Hover"] = (
+        anual["ValorRecolhido"]
+        .map(moeda)
+    )
+
+    fig = px.bar(
+        anual,
+        x="AnoLabel",
+        y="ValorRecolhido",
+        text="Rotulo",
+        custom_data=["Hover"],
+        title=(
+            "CFEM por ano — "
+            + municipio
+        )
+    )
+
+    fig.update_traces(
+        marker_color=AZUL_MEDIO,
+        textposition="outside",
+        cliponaxis=False,
+        hovertemplate=(
+            "<b>%{x}</b><br>"
+            "CFEM: %{customdata[0]}"
+            "<extra></extra>"
+        )
+    )
+
+    fig.update_xaxes(
+        title=None
+    )
+
+    fig.update_yaxes(
+        title=None,
+        showticklabels=False
+    )
+
+    layout_grafico(
+        fig,
+        altura=440
+    )
+
+    c1.plotly_chart(
+        fig,
+        use_container_width=True,
+        config={"displayModeBar": False}
+    )
+
+    # --------------------------------------------------------
+    # SUBSTÂNCIAS
+    # --------------------------------------------------------
+
+    subst = (
+        dados
+        .groupby(
+            "Substância",
+            as_index=False
+        )
+        ["ValorRecolhido"]
+        .sum()
+        .nlargest(
+            8,
+            "ValorRecolhido"
+        )
+        .sort_values(
+            "ValorRecolhido"
+        )
+    )
+
+    subst["Rotulo"] = (
+        subst["ValorRecolhido"]
+        .map(moeda_resumida)
+    )
+
+    subst["Hover"] = (
+        subst["ValorRecolhido"]
+        .map(moeda)
+    )
+
+    fig = px.bar(
+        subst,
+        x="ValorRecolhido",
+        y="Substância",
+        orientation="h",
+        text="Rotulo",
+        custom_data=["Hover"],
+        title="Principais substâncias"
+    )
+
+    fig.update_traces(
+        marker_color=VERDE,
+        textposition="outside",
+        cliponaxis=False,
+        hovertemplate=(
+            "<b>%{y}</b><br>"
+            "CFEM: %{customdata[0]}"
+            "<extra></extra>"
+        )
+    )
+
+    maior = (
+        subst["ValorRecolhido"].max()
+        if not subst.empty
+        else 1
+    )
+
+    fig.update_xaxes(
+        title=None,
+        showticklabels=False,
+        range=[
+            0,
+            maior * 1.30
+        ]
+    )
+
+    fig.update_yaxes(
+        title=None
+    )
+
+    layout_grafico(
+        fig,
+        altura=440,
+        margem_direita=70
+    )
+
+    c2.plotly_chart(
+        fig,
+        use_container_width=True,
+        config={"displayModeBar": False}
+    )
+
+    # --------------------------------------------------------
+    # PROCESSOS
+    # --------------------------------------------------------
+
+    st.subheader(
+        "Processos com arrecadação"
+    )
+
+    processos = (
+        dados
+        .groupby(
+            [
+                "Processo_fmt",
+                "Substância"
+            ],
+            as_index=False
+        )
+        ["ValorRecolhido"]
+        .sum()
+        .sort_values(
+            "ValorRecolhido",
+            ascending=False
+        )
+    )
+
+    processos = processos.rename(
+        columns={
+            "Processo_fmt":
+                "Processo",
+            "ValorRecolhido":
+                "CFEM arrecadada"
+        }
+    )
+
+    processos[
+        "CFEM arrecadada"
+    ] = (
+        processos[
+            "CFEM arrecadada"
+        ]
+        .map(moeda)
+    )
+
+    st.dataframe(
+        processos,
+        use_container_width=True,
+        hide_index=True,
+        height=400
+    )
+
+
+# ============================================================
+# 27. PROCESSOS
+# ============================================================
+
+elif pagina == "🔎 Processos":
+
+    st.header(
+        "Consulta Integrada de Processo"
+    )
+
+    st.caption(
+        "Ficha técnica integrando CFEM, SIGMINE, "
+        "SCM e geometria do processo minerário."
+    )
+
+    processo_digitado = st.text_input(
+        "Número do processo",
+        placeholder="Ex.: 830.195/2006"
+    )
+
+    if not processo_digitado:
+
+        st.info(
+            "Digite o número de um processo "
+            "para iniciar a consulta."
+        )
+
+    else:
+
+        chave = criar_chave_processo(
+            processo_digitado
+        )
+
+        processo_formatado = (
+            formatar_processo(
+                chave
+            )
+        )
+
+        st.subheader(
+            f"Processo {processo_formatado}"
+        )
+
+        aba_ficha, aba_cfem, aba_scm = (
+            st.tabs(
+                [
+                    "🗺️ Ficha e localização",
+                    "💰 CFEM",
+                    "📑 SCM / títulos"
+                ]
+            )
+        )
+
+        # ====================================================
+        # FICHA + SIGMINE
+        # ====================================================
+
+        with aba_ficha:
+
+            try:
+
+                with st.spinner(
+                    "Consultando SIGMINE..."
+                ):
+
+                    sigmine = load_sigmine()
+
+                geo = sigmine[
+                    sigmine[
+                        "Processo_key"
+                    ] == chave
+                ].copy()
+
+                if geo.empty:
+
+                    st.info(
+                        "Processo não encontrado "
+                        "no SIGMINE de Minas Gerais."
+                    )
+
+                else:
+
+                    st.success(
+                        "Processo localizado no SIGMINE."
+                    )
+
+                    campos = campos_sigmine(
+                        geo
+                    )
+
+                    primeira = geo.iloc[0]
+
+                    # ----------------------------------------
+                    # FICHA
+                    # ----------------------------------------
+
+                    ficha = []
+
+                    ficha.append(
+                        {
+                            "Informação": "Processo",
+                            "Valor": processo_formatado
+                        }
+                    )
+
+                    if campos["fase"]:
+
+                        ficha.append(
+                            {
+                                "Informação": "Fase",
+                                "Valor": str(
+                                    primeira[
+                                        campos["fase"]
+                                    ]
+                                )
+                            }
+                        )
+
+                    if campos["area"]:
+
+                        area_val = pd.to_numeric(
+                            pd.Series([
+                                primeira[
+                                    campos["area"]
+                                ]
+                            ]),
+                            errors="coerce"
+                        ).iloc[0]
+
+                        ficha.append(
+                            {
+                                "Informação": "Área",
+                                "Valor": (
+                                    area_br(
+                                        area_val
+                                    )
+                                    if pd.notna(area_val)
+                                    else "-"
+                                )
+                            }
+                        )
+
+                    if campos["substancia"]:
+
+                        ficha.append(
+                            {
+                                "Informação":
+                                    "Substância",
+                                "Valor": str(
+                                    primeira[
+                                        campos[
+                                            "substancia"
+                                        ]
+                                    ]
+                                )
+                            }
+                        )
+
+                    if campos["titular"]:
+
+                        ficha.append(
+                            {
+                                "Informação":
+                                    "Titular",
+                                "Valor": str(
+                                    primeira[
+                                        campos[
+                                            "titular"
+                                        ]
+                                    ]
+                                )
+                            }
+                        )
+
+                    if campos["municipio"]:
+
+                        ficha.append(
+                            {
+                                "Informação":
+                                    "Município",
+                                "Valor": str(
+                                    primeira[
+                                        campos[
+                                            "municipio"
+                                        ]
+                                    ]
+                                )
+                            }
+                        )
+
+                    if campos["evento"]:
+
+                        ficha.append(
+                            {
+                                "Informação":
+                                    "Último evento",
+                                "Valor": str(
+                                    primeira[
+                                        campos[
+                                            "evento"
+                                        ]
+                                    ]
+                                )
+                            }
+                        )
+
+                    st.subheader(
+                        "Ficha cadastral"
+                    )
+
+                    st.dataframe(
+                        pd.DataFrame(ficha),
+                        use_container_width=True,
+                        hide_index=True
+                    )
+
+                    # ----------------------------------------
+                    # MAPA
+                    # ----------------------------------------
+
+                    bounds = geo.total_bounds
+
+                    centro = (
+                        (
+                            bounds[1]
+                            + bounds[3]
+                        ) / 2,
+                        (
+                            bounds[0]
+                            + bounds[2]
+                        ) / 2
+                    )
+
+                    mapa = criar_mapa_base(
+                        centro,
+                        12
+                    )
+
+                    tooltip_campos = [
+                        "Processo_fmt"
+                    ]
+
+                    tooltip_aliases = [
+                        "Processo:"
+                    ]
+
+                    for chave_campo, titulo in [
+                        ("fase", "Fase:"),
+                        ("substancia", "Substância:"),
+                        ("titular", "Titular:"),
+                        ("municipio", "Município:"),
+                        ("area", "Área (ha):"),
+                    ]:
+
+                        coluna = campos.get(
+                            chave_campo
+                        )
+
+                        if (
+                            coluna
+                            and coluna
+                            in geo.columns
+                        ):
+
+                            tooltip_campos.append(
+                                coluna
+                            )
+
+                            tooltip_aliases.append(
+                                titulo
+                            )
+
+                    tooltip = (
+                        folium.GeoJsonTooltip(
+                            fields=tooltip_campos,
+                            aliases=tooltip_aliases,
+                            sticky=True
+                        )
+                    )
+
+                    folium.GeoJson(
+                        geo.to_json(),
+                        name="Processo minerário",
+                        style_function=lambda feature: {
+                            "color": DOURADO,
+                            "weight": 4,
+                            "fillColor": DOURADO,
+                            "fillOpacity": 0.32,
+                        },
+                        highlight_function=lambda feature: {
+                            "color": "#FFD166",
+                            "weight": 5,
+                            "fillOpacity": 0.42,
+                        },
+                        tooltip=tooltip
+                    ).add_to(mapa)
+
+                    folium.LayerControl(
+                        collapsed=False
+                    ).add_to(mapa)
+
+                    Fullscreen(
+                        position="topright"
+                    ).add_to(mapa)
+
+                    st_folium(
+                        mapa,
+                        use_container_width=True,
+                        height=620
+                    )
+
+                    # ----------------------------------------
+                    # EXPORTAÇÃO
+                    # ----------------------------------------
+
+                    st.subheader(
+                        "📦 Exportar geometria"
+                    )
+
+                    st.caption(
+                        "Baixe somente a poligonal deste "
+                        "processo para utilização no QGIS, "
+                        "ArcGIS ou Google Earth. "
+                        "Sistema de referência: WGS 84 "
+                        "(EPSG:4326)."
+                    )
+
+                    nome_base = (
+                        "processo_"
+                        + chave[:-4]
+                        + "_"
+                        + chave[-4:]
+                    )
+
+                    d1, d2, d3 = (
+                        st.columns(3)
+                    )
+
+                    try:
+
+                        shp = (
+                            exportar_shapefile_zip(
+                                geo,
+                                nome_base
+                            )
+                        )
+
+                        d1.download_button(
+                            "📦 Baixar Shapefile ZIP",
+                            data=shp,
+                            file_name=(
+                                nome_base
+                                + ".zip"
+                            ),
+                            mime="application/zip",
+                            use_container_width=True
+                        )
+
+                    except Exception:
+
+                        d1.warning(
+                            "Shapefile indisponível."
+                        )
+
+                    try:
+
+                        geojson = (
+                            exportar_geojson(
+                                geo
+                            )
+                        )
+
+                        d2.download_button(
+                            "🌐 Baixar GeoJSON",
+                            data=geojson,
+                            file_name=(
+                                nome_base
+                                + ".geojson"
+                            ),
+                            mime="application/geo+json",
+                            use_container_width=True
+                        )
+
+                    except Exception:
+
+                        d2.warning(
+                            "GeoJSON indisponível."
+                        )
+
+                    try:
+
+                        kml = (
+                            exportar_kml(
+                                geo
+                            )
+                        )
+
+                        d3.download_button(
+                            "🌍 Baixar KML",
+                            data=kml,
+                            file_name=(
+                                nome_base
+                                + ".kml"
+                            ),
+                            mime=(
+                                "application/vnd."
+                                "google-earth.kml+xml"
+                            ),
+                            use_container_width=True
+                        )
+
+                    except Exception:
+
+                        d3.warning(
+                            "KML indisponível."
+                        )
+
+                    # ----------------------------------------
+                    # ATRIBUTOS COMPLETOS
+                    # ----------------------------------------
+
+                    with st.expander(
+                        "Ver atributos completos do SIGMINE"
+                    ):
+
+                        atributos = (
+                            geo.drop(
+                                columns=["geometry"],
+                                errors="ignore"
+                            )
+                        )
+
+                        st.dataframe(
+                            atributos,
+                            use_container_width=True,
+                            hide_index=True
+                        )
+
+            except Exception as erro:
+
+                st.error(
+                    "Não foi possível consultar "
+                    "o SIGMINE."
+                )
+
+                st.exception(erro)
+
+        # ====================================================
+        # CFEM DO PROCESSO
+        # ====================================================
+
+        with aba_cfem:
+
+            resultado = cfem[
+                cfem[
+                    "Processo_key"
+                ] == chave
+            ].copy()
+
+            if resultado.empty:
+
+                st.info(
+                    "Não foram encontrados registros "
+                    "de CFEM para este processo no "
+                    "período disponível."
+                )
+
+            else:
+
+                total = (
+                    resultado[
+                        "ValorRecolhido"
+                    ]
+                    .fillna(0)
+                    .sum()
+                )
+
+                c1, c2, c3, c4 = (
+                    st.columns(4)
+                )
+
+                c1.metric(
+                    "💰 CFEM",
+                    moeda_resumida(total)
+                )
+
+                c2.metric(
+                    "🏙️ Municípios",
+                    inteiro_br(
+                        resultado[
+                            "Município"
+                        ].nunique()
+                    )
+                )
+
+                c3.metric(
+                    "💎 Substâncias",
+                    inteiro_br(
+                        resultado[
+                            "Substância"
+                        ].nunique()
+                    )
+                )
+
+                c4.metric(
+                    "📅 Registros",
+                    inteiro_br(
+                        len(resultado)
+                    )
+                )
+
+                anual = (
+                    resultado
+                    .groupby(
+                        "Ano",
+                        as_index=False
+                    )
+                    ["ValorRecolhido"]
+                    .sum()
+                )
+
+                anual["AnoLabel"] = (
+                    anual["Ano"]
+                    .astype(int)
+                    .astype(str)
+                )
+
+                if ANO_PARCIAL:
+
+                    anual.loc[
+                        anual["Ano"]
+                        == ANO_MAX_CFEM,
+                        "AnoLabel"
+                    ] = (
+                        str(ANO_MAX_CFEM)
+                        + "*"
+                    )
+
+                anual["Rotulo"] = (
+                    anual[
+                        "ValorRecolhido"
+                    ]
+                    .map(moeda_resumida)
+                )
+
+                anual["Hover"] = (
+                    anual[
+                        "ValorRecolhido"
+                    ]
+                    .map(moeda)
+                )
+
+                fig = px.bar(
+                    anual,
+                    x="AnoLabel",
+                    y="ValorRecolhido",
+                    text="Rotulo",
+                    custom_data=["Hover"],
+                    title="Arrecadação por ano"
+                )
+
+                fig.update_traces(
+                    marker_color=AZUL_MEDIO,
+                    textposition="outside",
+                    cliponaxis=False,
+                    hovertemplate=(
+                        "<b>%{x}</b><br>"
+                        "CFEM: %{customdata[0]}"
+                        "<extra></extra>"
+                    )
+                )
+
+                fig.update_xaxes(
+                    title=None
+                )
+
+                fig.update_yaxes(
+                    title=None,
+                    showticklabels=False
+                )
+
+                layout_grafico(
+                    fig,
+                    altura=420
+                )
+
+                plotar(fig)
+
+                colunas = [
+                    c for c in [
+                        "Ano",
+                        "Mês",
+                        "Município",
+                        "Substância",
+                        "QuantidadeComercializada",
+                        "UnidadeDeMedida",
+                        "ValorRecolhido"
+                    ]
+                    if c in resultado.columns
+                ]
+
+                tabela = (
+                    resultado[colunas]
+                    .copy()
+                )
+
+                if "Mês" in tabela.columns:
+
+                    tabela["Mês"] = (
+                        tabela["Mês"]
+                        .map(MESES)
+                    )
+
+                if (
+                    "QuantidadeComercializada"
+                    in tabela.columns
+                ):
+
+                    tabela[
+                        "QuantidadeComercializada"
+                    ] = (
+                        tabela[
+                            "QuantidadeComercializada"
+                        ]
+                        .map(
+                            lambda x:
+                            numero_br(x, 2)
+                        )
+                    )
+
+                if (
+                    "ValorRecolhido"
+                    in tabela.columns
+                ):
+
+                    tabela[
+                        "ValorRecolhido"
+                    ] = (
+                        tabela[
+                            "ValorRecolhido"
+                        ]
+                        .map(moeda)
+                    )
+
+                tabela = tabela.rename(
+                    columns={
+                        "QuantidadeComercializada":
+                            "Quantidade comercializada",
+                        "UnidadeDeMedida":
+                            "Unidade",
+                        "ValorRecolhido":
+                            "CFEM arrecadada"
+                    }
+                )
+
+                st.dataframe(
+                    tabela,
+                    use_container_width=True,
+                    hide_index=True
+                )
+
+        # ====================================================
+        # SCM
+        # ====================================================
+
+        with aba_scm:
+
+            st.caption(
+                "Pesquisa do processo nas bases "
+                "públicas do Sistema de Cadastro "
+                "Mineiro da ANM."
+            )
+
+            if st.button(
+                "🔎 Consultar bases SCM",
+                type="primary"
+            ):
+
+                encontrados = 0
+
+                barra = st.progress(0)
+
+                status = st.empty()
+
+                total_arquivos = len(
+                    SCM_FILES
+                )
+
+                for indice, (
+                    titulo,
+                    arquivo
+                ) in enumerate(
+                    SCM_FILES.items(),
+                    start=1
+                ):
+
+                    status.caption(
+                        f"Consultando {titulo}..."
+                    )
+
+                    try:
+
+                        scm = load_scm_file(
+                            arquivo
+                        )
+
+                        if (
+                            "_processo_key"
+                            in scm.columns
+                        ):
+
+                            resultado_scm = (
+                                scm[
+                                    scm[
+                                        "_processo_key"
+                                    ] == chave
+                                ]
+                                .copy()
+                            )
+
+                            if (
+                                not resultado_scm.empty
+                            ):
+
+                                encontrados += 1
+
+                                st.subheader(
+                                    titulo
+                                )
+
+                                resultado_scm = (
+                                    resultado_scm.drop(
+                                        columns=[
+                                            "_processo_key"
+                                        ],
+                                        errors="ignore"
+                                    )
+                                )
+
+                                st.dataframe(
+                                    resultado_scm,
+                                    use_container_width=True,
+                                    hide_index=True
+                                )
+
+                    except Exception:
+                        pass
+
+                    barra.progress(
+                        indice
+                        / total_arquivos
+                    )
+
+                barra.empty()
+                status.empty()
+
+                if encontrados == 0:
+
+                    st.info(
+                        "Nenhuma ocorrência foi "
+                        "encontrada nas bases SCM "
+                        "consultadas."
+                    )
+
+
+# ============================================================
+# 28. RODAPÉ
+# ============================================================
+
+st.divider()
+
+rodape = (
+    "Fonte: Agência Nacional de Mineração — ANM • "
+    "CFEM • SIGMINE • Sistema de Cadastro Mineiro (SCM). "
+    "Dados públicos sujeitos às atualizações das bases de origem."
 )
 
-print("=" * 70)
+if (
+    ANO_MAX_CFEM
+    and MES_MAX_CFEM
+):
 
-print(
-    "Mapa:",
-    ARQUIVO_SAIDA
+    rodape += (
+        f" • CFEM disponível até "
+        f"{MESES_LONGOS[MES_MAX_CFEM]}/"
+        f"{ANO_MAX_CFEM}."
+    )
+
+st.caption(
+    rodape
 )
-
-print(
-    "JSON:",
-    ARQUIVO_DADOS
-)
-
-print(
-    "Atualização ANM:",
-    data_atualizacao_anm
-)
-
-print(
-    "WebGIS gerado em:",
-    data_geracao_webgis
-)
-
-print(
-    "Anos:",
-    anos
-)
-
-print(
-    "Municípios:",
-    len(municipios)
-)
-
-print(
-    "Substâncias:",
-    len(todas_substancias)
-)
-
-print(
-    "Filtro mensal:",
-    "habilitado"
-)
-
-print("=" * 70)
