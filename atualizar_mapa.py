@@ -275,31 +275,82 @@ def encontrar_coluna(colunas, termos):
 # 6. PROCESSO ANM
 # ============================================================
 
-def criar_chave_processo(numero, ano=None):
+def ano_processo_valido(valor):
+    """Valida o bloco final de 4 dígitos usado como ano do processo ANM."""
+    try:
+        ano = int(valor)
+        return 1900 <= ano <= 2100
+    except Exception:
+        return False
 
-    numero_digitos = somente_digitos(numero)
+
+def criar_chave_processo(numero, ano=None):
+    """
+    Cria uma chave canônica somente com dígitos.
+
+    Exemplos:
+    43.306/1956  -> 433061956   (9 dígitos)
+    43306/1956   -> 433061956
+    433061956    -> 433061956
+    830.195/2006 -> 8301952006  (10 dígitos)
+    830195 + 2006 -> 8301952006
+
+    Importante: processos ANM antigos podem ter apenas 5 dígitos antes
+    do ano. Por isso a chave completa não é obrigatoriamente de 10 dígitos.
+    """
+
+    if pd.isna(numero):
+        return ""
+
+    texto = str(numero).strip()
+    numero_digitos = somente_digitos(texto)
     ano_digitos = somente_digitos(ano)
 
-    # Ex.: 8301952006
-    if len(numero_digitos) >= 10:
-        return numero_digitos
-
-    # Ex.: Processo 830195 + Ano 2006
+    # Quando número e ano vêm em colunas separadas, esta é a fonte mais segura.
     if numero_digitos and len(ano_digitos) >= 4:
-        return numero_digitos + ano_digitos[-4:]
+        ano_final = ano_digitos[-4:]
+        if ano_processo_valido(ano_final):
+            # Evita duplicar o ano caso o campo Processo já esteja completo.
+            if (
+                len(numero_digitos) >= 9
+                and numero_digitos.endswith(ano_final)
+            ):
+                return numero_digitos
+            return numero_digitos + ano_final
 
+    # Entrada explicitamente no formato número/ano.
+    if "/" in texto:
+        partes = texto.rsplit("/", 1)
+        numero_parte = somente_digitos(partes[0])
+        ano_parte = somente_digitos(partes[1])[-4:]
+        if numero_parte and ano_processo_valido(ano_parte):
+            return numero_parte + ano_parte
+
+    # Entrada compacta. Uma chave completa pode ter 9 ou mais dígitos:
+    # 433061956 = 43306 + 1956; 8301952006 = 830195 + 2006.
+    if len(numero_digitos) >= 9:
+        ano_final = numero_digitos[-4:]
+        if ano_processo_valido(ano_final):
+            return numero_digitos
+
+    # Número sem ano: preserva para não inventar informação.
     return numero_digitos
 
 
 def formatar_processo(chave):
+    """Formata a chave canônica como número/ano, inclusive processos antigos."""
 
     chave = somente_digitos(chave)
 
-    if len(chave) < 10:
+    # 5 dígitos de número + 4 do ano = 9 dígitos já é uma chave completa válida.
+    if len(chave) < 9:
         return chave
 
     numero = chave[:-4]
     ano = chave[-4:]
+
+    if not numero or not ano_processo_valido(ano):
+        return chave
 
     try:
         numero = f"{int(numero):,}".replace(",", ".")
